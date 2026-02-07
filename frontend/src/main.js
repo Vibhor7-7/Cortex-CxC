@@ -67,17 +67,26 @@ const pNeighbors = document.getElementById("pNeighbors");
 const loadingOverlay = document.getElementById("loadingOverlay");
 const loadingMessage = document.getElementById("loadingMessage");
 const toastContainer = document.getElementById("toastContainer");
+const retryButton = document.getElementById("retryButton");
 
 /** Show the fullscreen loading overlay with a custom message. */
-function showLoading(msg = "Loading…") {
+function showLoading(msg = "Loading…", showRetry = false) {
   loadingMessage.textContent = msg;
   loadingOverlay.classList.remove("hidden");
   loadingOverlay.style.display = "flex";
+
+  // Show/hide retry button
+  if (retryButton) {
+    retryButton.style.display = showRetry ? "block" : "none";
+  }
 }
 
 /** Hide the fullscreen loading overlay. */
 function hideLoading() {
   loadingOverlay.classList.add("hidden");
+  if (retryButton) {
+    retryButton.style.display = "none";
+  }
   setTimeout(() => {
     if (loadingOverlay.classList.contains("hidden")) {
       loadingOverlay.style.display = "none";
@@ -870,7 +879,15 @@ function populatePanel(i) {
       pSnippet.textContent = content || n.full || n.snippet || "";
     }).catch((err) => {
       console.warn("[panel] Failed to load details:", err);
-      pSnippet.textContent = n.full || n.snippet || "(details unavailable)";
+
+      // Show error with fallback to summary
+      const fallback = n.full || n.snippet || "";
+      pSnippet.innerHTML = `
+        <div style="color: #f87171; font-size: 12px; margin-bottom: 8px;">
+          ⚠️ Failed to load full details: ${err.message}
+        </div>
+        <div style="opacity: 0.8;">${fallback || "(No summary available)"}</div>
+      `;
     });
   }
 }
@@ -1092,10 +1109,24 @@ async function triggerSearch() {
   try {
     const list = await searchNodes(q);
     showResults(list);
+
+    // Show "No results" message if search returned nothing
+    if (list.length === 0) {
+      resultsEl.style.display = "block";
+      resultsEl.innerHTML = `<div class="resItem" style="cursor: default; opacity: 0.6;">No results found for "${q}"</div>`;
+    }
   } catch (err) {
     console.error("[search]", err);
-    showToast(`Search error: ${err.message}`, "error");
-    hideResults();
+    showToast(`Search error: ${err.message}`, "error", 5000);
+
+    // Show error in results dropdown with retry option
+    resultsEl.style.display = "block";
+    resultsEl.innerHTML = `
+      <div class="resItem" style="cursor: default; color: #f87171;">
+        <div style="font-weight: 500;">Search failed</div>
+        <div style="font-size: 11px; opacity: 0.8; margin-top: 4px;">${err.message}</div>
+      </div>
+    `;
   } finally {
     setApiLoading(false);
   }
@@ -1683,9 +1714,28 @@ async function tryLoadBackendData() {
     hideLoading();
   } catch (err) {
     console.warn("[init] Backend unavailable, keeping demo data:", err.message);
-    showToast("Backend offline — showing demo data", "info", 5000);
-    hideLoading();
+
+    // Show error with retry option
+    showLoading(`Connection failed: ${err.message}`, true);
+    showToast("Backend offline — click Retry or use demo data", "error", 6000);
+
+    // Auto-hide after 12 seconds if user doesn't retry
+    setTimeout(() => {
+      if (loadingOverlay && !loadingOverlay.classList.contains("hidden")) {
+        hideLoading();
+        showToast("Using demo data for visualization", "info", 4000);
+      }
+    }, 12000);
   }
+}
+
+// Retry button event listener
+if (retryButton) {
+  retryButton.addEventListener("click", () => {
+    console.log("[retry] User requested retry");
+    hideLoading();
+    tryLoadBackendData();
+  });
 }
 
 // Kick off backend loading (non-blocking — animation already runs)
