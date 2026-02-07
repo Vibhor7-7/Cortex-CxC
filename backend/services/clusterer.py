@@ -235,7 +235,8 @@ def generate_cluster_names_from_topics(
     
     for idx, assignment in enumerate(cluster_assignments):
         cid = assignment["cluster_id"]
-        cluster_topics.setdefault(cid, []).extend(all_topics[idx] if idx < len(all_topics) else [])
+        topics = all_topics[idx] if idx < len(all_topics) and all_topics[idx] else []
+        cluster_topics.setdefault(cid, []).extend(topics)
         if idx < len(titles) and titles[idx]:
             cluster_titles.setdefault(cid, []).append(titles[idx])
     

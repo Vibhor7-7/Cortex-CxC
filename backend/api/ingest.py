@@ -315,7 +315,7 @@ async def reprocess_all_conversations():
             ).all()
             # Build a lookup so order matches conversation_ids
             conv_map = {c.id: c for c in conversations}
-            all_topics = [conv_map[cid].topics if cid in conv_map else [] for cid in conversation_ids]
+            all_topics = [conv_map[cid].topics or [] if cid in conv_map else [] for cid in conversation_ids]
             all_titles = [conv_map[cid].title if cid in conv_map else "" for cid in conversation_ids]
 
             # 2. Run UMAP dimensionality reduction
