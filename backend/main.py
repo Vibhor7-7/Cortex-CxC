@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI):
     else:
         print(" OpenAI API key configured")
     
-    print("✨ CORTEX backend ready!")
+    print(" CORTEX backend ready!")
     
     yield
     

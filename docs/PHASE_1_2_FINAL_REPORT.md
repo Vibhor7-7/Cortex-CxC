@@ -480,7 +480,7 @@ The system successfully:
 4. Clusters conversations semantically
 5. Serves data via REST API
 
-**Ready to proceed to Phase 3!** 🎉
+**Ready to proceed to Phase 3!** 
 
 ---
 
