@@ -1,11 +1,106 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Context Atlas — One-File Three.js</title>
+  <link rel="stylesheet" href="./styles.css" />
 </head>
+
 <body>
-    
+  <div id="ui">
+    <div class="topbar">
+      <div class="searchWrap">
+        <span class="badge">Context Atlas</span>
+        <input id="search" placeholder="Search memories…  (press /)" autocomplete="off" />
+        <span class="badge" id="modeBadge">Orbit</span>
+      </div>
+
+      <div class="pill">
+        <label>Cluster</label>
+        <select id="clusterFilter"></select>
+      </div>
+
+      <div class="pill">
+        <label>Point</label>
+        <input id="pointSize" type="range" min="1" max="6" step="0.1" value="2.2" />
+        <span class="badge" id="pointSizeLabel">2.2px</span>
+      </div>
+
+      <div class="pill">
+        <label>Edges</label>
+        <input id="kNN" type="range" min="3" max="16" step="1" value="8" />
+        <span class="badge" id="kNNLabel">K=8</span>
+      </div>
+    </div>
+
+    <div id="results"></div>
+
+    <div id="panel">
+      <div class="muted">Selected memory</div>
+      <h3 id="pTitle">None</h3>
+      <div class="kv">
+        <div>Cluster</div><div id="pCluster">—</div>
+        <div>Time</div><div id="pTime">—</div>
+        <div>Tags</div><div id="pTags">—</div>
+      </div>
+      <div class="snippet" id="pSnippet">Click a point to inspect. Hover to preview + show neighbor edges.</div>
+
+      <div style="margin-top:10px" class="muted">Neighbors</div>
+      <div class="neighbors" id="pNeighbors"></div>
+    </div>
+
+    <div id="legend">
+      <div class="row"><span>Mode</span><b id="legendMode">Orbit</b></div>
+      <div class="row"><span>Hover</span><b>edges + highlight</b></div>
+      <div class="row"><span>Select</span><b>details + focus (<span class="kbd">F</span>)</b></div>
+      <div class="row"><span>Toggle fly</span><b><span class="kbd">Shift</span>+<span class="kbd">Space</span></b></div>
+      <div class="row"><span>Help</span><b><span class="kbd">?</span></b></div>
+      <div class="row"><span>Search focus</span><b><span class="kbd">/</span></b></div>
+    </div>
+
+    <div id="help">
+      <div class="helpCard">
+        <h2>Controls</h2>
+        <div class="helpGrid">
+          <div class="helpBlock">
+            <h4>Orbit mode</h4>
+            <div class="line"><span><span class="kbd">Mouse</span></span><span>Rotate / Pan / Zoom</span></div>
+            <div class="line"><span><span class="kbd">W</span>/<span class="kbd">S</span></span><span>Dolly in/out</span></div>
+            <div class="line"><span><span class="kbd">A</span>/<span class="kbd">D</span></span><span>Strafe (pan)</span></div>
+            <div class="line"><span><span class="kbd">Q</span>/<span class="kbd">E</span></span><span>Pan up/down</span></div>
+            <div class="line"><span><span class="kbd">R</span></span><span>Reset camera</span></div>
+            <div class="line"><span><span class="kbd">F</span></span><span>Focus selected node</span></div>
+          </div>
+          <div class="helpBlock">
+            <h4>Fly / FPS mode</h4>
+            <div class="line"><span><span class="kbd">Shift</span>+<span class="kbd">Space</span></span><span>Toggle Fly</span></div>
+            <div class="line"><span><span class="kbd">WASD</span></span><span>Move</span></div>
+            <div class="line"><span><span class="kbd">Q</span>/<span class="kbd">E</span></span><span>Down / Up</span></div>
+            <div class="line"><span><span class="kbd">Shift</span></span><span>Boost speed</span></div>
+            <div class="line"><span><span class="kbd">Space</span></span><span>Brake / slow</span></div>
+            <div class="line"><span><span class="kbd">Esc</span></span><span>Exit pointer lock</span></div>
+          </div>
+        </div>
+        <div class="small">
+          Other: <span class="kbd">/</span> focuses search, <span class="kbd">↑</span>/<span class="kbd">↓</span> navigate results, <span class="kbd">Enter</span> selects,
+          <span class="kbd">Esc</span> clears selection, <span class="kbd">?</span> toggles this panel.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Keep importmap exactly the same -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <!-- App entry -->
+  <script type="module" src="./src/main.js"></script>
 </body>
 </html>
