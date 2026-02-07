@@ -71,50 +71,78 @@ class ChatGPTParser(BaseParser):
             'created_at': created_at
         }
     
+    def parse_all(self) -> List[Dict]:
+        """
+        Parse ALL conversations from a ChatGPT HTML export.
+
+        ChatGPT exports can contain many conversations in a single file.
+        This method returns every one of them.
+
+        Returns:
+            List of dicts, each with title, messages, created_at.
+            Falls back to a single-element list from parse() if
+            multi-conversation extraction is not applicable.
+        """
+        all_convs = self._try_parse_all_json_data()
+        if all_convs:
+            return all_convs
+        # Fallback: single conversation via the normal path
+        single = self.parse()
+        return [single] if single and single.get('messages') else []
+
     def _try_parse_json_data(self) -> Optional[Dict]:
         """
-        Try to extract conversation data from embedded JSON in script tags.
-        This handles newer ChatGPT exports that embed JSON data.
+        Try to extract the FIRST conversation from embedded JSON.
         
         Returns:
             Dict with parsed data or None if no JSON found
         """
-        # Find all script tags
+        all_convs = self._try_parse_all_json_data()
+        if all_convs:
+            return all_convs[0]
+        return None
+
+    def _try_parse_all_json_data(self) -> Optional[List[Dict]]:
+        """
+        Extract ALL conversations from embedded JSON in script tags.
+
+        Returns:
+            List of parsed conversation dicts, or None if no JSON found.
+        """
         scripts = self.soup.find_all('script')
-        
+
         for script in scripts:
             script_text = script.string
             if not script_text:
                 continue
-            
-            # Look for JSON data assignments
+
             patterns = [
                 r'var\s+jsonData\s*=\s*',
                 r'const\s+conversations\s*=\s*',
                 r'var\s+conversations\s*=\s*',
             ]
-            
+
             for pattern in patterns:
                 match = re.search(pattern + r'\[', script_text)
                 if match:
-                    # Found start of JSON array
-                    start_pos = match.end() - 1  # Position of '['
+                    start_pos = match.end() - 1
                     json_text = script_text[start_pos:]
-                    
-                    # Extract the complete JSON array by counting brackets
                     json_str = self._extract_json_array(json_text)
-                    
+
                     if json_str:
                         try:
                             conversations = json.loads(json_str)
-                            
                             if conversations and isinstance(conversations, list):
-                                # Process first conversation (or all if multiple)
-                                return self._parse_json_conversation(conversations[0])
-                                
+                                results = []
+                                for conv in conversations:
+                                    parsed = self._parse_json_conversation(conv)
+                                    if parsed and parsed.get('messages'):
+                                        results.append(parsed)
+                                if results:
+                                    return results
                         except json.JSONDecodeError:
                             continue
-        
+
         return None
     
     def _extract_json_array(self, text: str) -> Optional[str]:

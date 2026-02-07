@@ -786,40 +786,43 @@ The foundation is solid and ready for:
 
 ---
 
-### Task 4.3: File Upload UI
+### Task 4.3: File Upload UI ✅
 **Priority:** P1 (High)
 **Estimated Time:** 3 hours
 **Owner:** Frontend Team
+**Status:** COMPLETE
 
 #### Sub-tasks:
-- [ ] **4.3.1** Add upload button to top bar:
-  - Insert button in `.topbar` div next to existing controls
-  - Style consistently with existing pill design
-  - Show upload icon/label
+- [x] **4.3.1** Add upload button to top bar:
+  - `↑ Upload` pill button in topbar opens the upload modal
+  - Styled consistently with existing pill design
 
-- [ ] **4.3.2** Create upload modal/dialog:
-  - Add hidden modal container to `index.html`
-  - Implement drag-and-drop zone for HTML files
-  - Add file input for click-to-upload
-  - File validation (HTML only, max 10MB)
-  - Show selected files list before upload
+- [x] **4.3.2** Create upload modal/dialog:
+  - Full-screen overlay with centered card
+  - Drag-and-drop zone with 📂 icon and visual feedback (`.dragover` state)
+  - Click-to-browse file input (`.html` only, `multiple`)
+  - File validation: HTML only, max 10 MB per file, dedup by name
+  - File list shows name, size, remove button per file
+  - Global page drag opens modal automatically
 
-- [ ] **4.3.3** Implement upload progress:
-  - Progress bar for each file
-  - Success/error indicators per file
-  - Show upload summary when complete
-  - Automatically refresh visualization after successful upload
+- [x] **4.3.3** Implement upload progress:
+  - Per-file progress bar with animated width
+  - Inline spinner during upload, ✓/✗ on completion
+  - Green/red border color on success/error
+  - Summary banner after all uploads ("3 files uploaded successfully" / "2 succeeded, 1 failed")
+  - Automatically calls `tryLoadBackendData()` to refresh 3D scene after upload
 
-- [ ] **4.3.4** Handle upload errors:
-  - Display error messages from backend
-  - Allow retry for failed uploads
-  - Clear upload state on close
+- [x] **4.3.4** Handle upload errors:
+  - Per-file error indicators with tooltip detail
+  - Toast notifications for validation rejections (wrong type, too large)
+  - Backend error messages shown in summary
+  - Clear / close buttons, backdrop click to dismiss
 
 **Acceptance Criteria:**
--  Users can upload HTML files via drag-drop or file picker
--  Upload progress is visible
--  New chats appear in 3D scene after upload (automatic refresh)
--  Error messages are clear and actionable
+- ✅ Users can upload HTML files via drag-drop or file picker
+- ✅ Upload progress is visible (per-file progress bars + status icons)
+- ✅ New chats appear in 3D scene after upload (automatic refresh)
+- ✅ Error messages are clear and actionable
 
 ---
 

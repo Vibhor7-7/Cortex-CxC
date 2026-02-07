@@ -66,7 +66,11 @@ def fit_umap_model(
         raise ValueError("Need at least 2 embeddings to fit UMAP")
     
     # Adjust n_neighbors if we have fewer samples
-    n_neighbors = min(UMAP_N_NEIGHBORS, X.shape[0] - 1)
+    n_neighbors = min(UMAP_N_NEIGHBORS, max(2, X.shape[0] - 1))
+    
+    # For very small datasets, use random init instead of spectral
+    # (spectral fails when k >= N in the sparse eigensolver)
+    init_method = "spectral" if X.shape[0] > n_neighbors + 1 else "random"
     
     # Create and fit UMAP model
     umap_model = UMAP(
@@ -75,6 +79,7 @@ def fit_umap_model(
         min_dist=UMAP_MIN_DIST,
         metric="cosine",
         random_state=UMAP_RANDOM_STATE,
+        init=init_method,
         verbose=False
     )
     

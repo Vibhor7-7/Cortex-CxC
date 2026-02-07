@@ -38,6 +38,10 @@
       </div>
 
       <div class="pill">
+        <button id="uploadBtn" class="pillBtn" type="button">↑ Upload</button>
+      </div>
+
+      <div class="pill">
         <label>Selected</label>
         <span class="badge" id="selectedCount">0</span>
         <button id="genPrompt" class="pillBtn" type="button" disabled>Generate system prompt</button>
@@ -82,6 +86,7 @@
       <div class="row"><span>Toggle fly</span><b><span class="kbd">Shift</span>+<span class="kbd">Space</span></b></div>
       <div class="row"><span>Help</span><b><span class="kbd">?</span></b></div>
       <div class="row"><span>Search focus</span><b><span class="kbd">/</span></b></div>
+      <div id="clusterLegend"></div>
     </div>
 
     <div id="help">
@@ -125,6 +130,31 @@
           <button id="copyPrompt" class="pillBtn" type="button">Copy</button>
           <button id="closePrompt" class="pillBtn ghost" type="button">Back</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Upload modal -->
+    <div id="uploadModal">
+      <div class="uploadCard">
+        <div class="uploadHeader">
+          <h3>Upload Chat Exports</h3>
+          <button id="closeUpload" class="pillBtn ghost" type="button">✕</button>
+        </div>
+        <div id="dropZone" class="dropZone">
+          <div class="dropIcon">📂</div>
+          <div class="dropLabel">Drag &amp; drop <b>.html</b> files here</div>
+          <div class="dropSub">ChatGPT or Claude exports &middot; max 10 MB each</div>
+          <label class="pillBtn dropBrowse">
+            <input type="file" id="uploadFileInput" accept=".html" multiple style="display:none" />
+            Browse files
+          </label>
+        </div>
+        <div id="uploadList" class="uploadList"></div>
+        <div id="uploadActions" class="uploadActions" style="display:none">
+          <button id="uploadStart" class="pillBtn uploadStartBtn" type="button">Upload All</button>
+          <button id="uploadClear" class="pillBtn ghost" type="button">Clear</button>
+        </div>
+        <div id="uploadSummary" class="uploadSummary" style="display:none"></div>
       </div>
     </div>
 

@@ -194,16 +194,20 @@ def predict_clusters(
 
 def generate_cluster_names_from_topics(
     cluster_assignments: List[Dict[str, Any]],
-    all_topics: List[List[str]]
+    all_topics: List[List[str]],
+    all_titles: List[str] | None = None
 ) -> Dict[int, str]:
     """
-    Generate meaningful cluster names based on common topics.
+    Generate meaningful cluster names based on conversation titles and topics.
     
-    For each cluster, finds the most common topics and creates a name.
+    Uses conversation titles (more descriptive) when available, falling back
+    to topic tags.  Picks the two most frequent meaningful words from titles
+    in each cluster and joins them as a short theme label.
     
     Args:
         cluster_assignments: List of cluster assignment dicts with cluster_id
         all_topics: List of topic lists (one per conversation)
+        all_titles: Optional list of conversation titles (one per conversation)
     
     Returns:
         Dictionary mapping cluster_id to cluster_name
@@ -211,45 +215,61 @@ def generate_cluster_names_from_topics(
     if len(cluster_assignments) != len(all_topics):
         raise ValueError("cluster_assignments and all_topics must have same length")
     
-    # Group topics by cluster
+    # Stopwords to skip when extracting themes from titles
+    _STOP = {
+        "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
+        "of", "with", "by", "from", "is", "it", "its", "my", "me", "i",
+        "this", "that", "how", "what", "why", "when", "where", "who", "which",
+        "can", "do", "does", "did", "will", "would", "could", "should", "be",
+        "been", "being", "have", "has", "had", "help", "about", "using",
+        "get", "got", "make", "making", "made", "just", "like", "also", "so",
+        "up", "out", "if", "no", "not", "vs", "into", "over", "than", "then",
+        "your", "you", "we", "our", "their", "some", "any", "all", "each",
+    }
+    
+    # Group titles and topics by cluster
+    cluster_titles: Dict[int, List[str]] = {}
     cluster_topics: Dict[int, List[str]] = {}
     
-    for assignment, topics in zip(cluster_assignments, all_topics):
-        cluster_id = assignment["cluster_id"]
-        
-        if cluster_id not in cluster_topics:
-            cluster_topics[cluster_id] = []
-        
-        cluster_topics[cluster_id].extend(topics)
+    titles = all_titles or []
     
-    # Generate names for each cluster
-    cluster_names = {}
+    for idx, assignment in enumerate(cluster_assignments):
+        cid = assignment["cluster_id"]
+        cluster_topics.setdefault(cid, []).extend(all_topics[idx] if idx < len(all_topics) else [])
+        if idx < len(titles) and titles[idx]:
+            cluster_titles.setdefault(cid, []).append(titles[idx])
     
-    for cluster_id, topics in cluster_topics.items():
-        if not topics:
-            cluster_names[cluster_id] = f"Cluster {cluster_id}"
-            continue
+    cluster_names: Dict[int, str] = {}
+    
+    for cid in sorted(set(a["cluster_id"] for a in cluster_assignments)):
+        # Strategy 1: extract theme words from titles (preferred)
+        titles_for_cluster = cluster_titles.get(cid, [])
+        if titles_for_cluster:
+            word_counts: Dict[str, int] = {}
+            for title in titles_for_cluster:
+                words = title.lower().replace("-", " ").split()
+                for w in words:
+                    w = w.strip(".,!?()[]{}\"':#")
+                    if len(w) >= 3 and w not in _STOP:
+                        word_counts[w] = word_counts.get(w, 0) + 1
+            
+            if word_counts:
+                sorted_words = sorted(word_counts.items(), key=lambda x: x[1], reverse=True)
+                top = [w[0].title() for w in sorted_words[:3]]
+                cluster_names[cid] = " & ".join(top[:2]) if len(top) >= 2 else top[0]
+                continue
         
-        # Count topic frequency
-        topic_counts: Dict[str, int] = {}
-        for topic in topics:
-            topic_lower = topic.lower()
-            topic_counts[topic_lower] = topic_counts.get(topic_lower, 0) + 1
-        
-        # Get top 2 most common topics
-        sorted_topics = sorted(
-            topic_counts.items(),
-            key=lambda x: x[1],
-            reverse=True
-        )
-        
-        top_topics = [t[0].title() for t in sorted_topics[:2]]
-        
-        # Create cluster name
-        if len(top_topics) == 1:
-            cluster_names[cluster_id] = top_topics[0]
+        # Strategy 2: fall back to topic tags
+        topics = cluster_topics.get(cid, [])
+        if topics:
+            topic_counts: Dict[str, int] = {}
+            for t in topics:
+                topic_counts[t.lower()] = topic_counts.get(t.lower(), 0) + 1
+            sorted_t = sorted(topic_counts.items(), key=lambda x: x[1], reverse=True)
+            top_t = [t[0].title() for t in sorted_t[:2]]
+            cluster_names[cid] = " & ".join(top_t)
         else:
-            cluster_names[cluster_id] = f"{top_topics[0]} & {top_topics[1]}"
+            cluster_names[cid] = f"Cluster {cid}"
     
     return cluster_names
 

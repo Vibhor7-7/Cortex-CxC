@@ -13,26 +13,26 @@ const CFG = {
   N: 0,               // populated from backend
   D: 128,             // vector dim
   CLUSTERS: 8,
-  SPACE_SCALE: 34,    // spread in world units
-  POINT_SIZE_PX: 2.2, // base px (overridden by UI)
-  HOVER_BOOST: 1.3,
-  SELECT_BOOST: 1.8,
-  EDGE_K: 8,          // top-K neighbors
-  EDGE_MIN_SIM: 0.25, // similarity threshold for showing edges
-  EDGE_FADE_DIST: 70,
-  DRIFT_STRENGTH: 0.40,  // how "alive" motion feels
-  SPRING_K: 3.2,         // spring stiffness
-  DAMPING: 2.9,          // critical-ish damping factor
-  GRAVITY_RADIUS: 16,
-  GRAVITY_STRENGTH: 1.8,
-  FOCUS_RADIUS: 36,
+  SPACE_SCALE: 8,     // spread in world units (UMAP ~[-10,10] * 8 = [-80,80])
+  POINT_SIZE_PX: 4.5, // base px — big enough to see clusters
+  HOVER_BOOST: 1.5,
+  SELECT_BOOST: 2.2,
+  EDGE_K: 6,          // top-K neighbors
+  EDGE_MIN_SIM: 0.20, // similarity threshold for showing edges
+  EDGE_FADE_DIST: 50,
+  DRIFT_STRENGTH: 0.25,  // gentle motion
+  SPRING_K: 4.0,         // spring stiffness
+  DAMPING: 3.5,          // critical-ish damping factor
+  GRAVITY_RADIUS: 20,
+  GRAVITY_STRENGTH: 1.5,
+  FOCUS_RADIUS: 50,
   WAVE_SPEED: 60,
   WAVE_WIDTH: 14,
   WAVE_STRENGTH: 0.6,
   WAVE_MAX_DIST: 220,
-  STAR_COUNT: 2200,
-  FOG_NEAR: 35,
-  FOG_FAR: 170,
+  STAR_COUNT: 1200,
+  FOG_NEAR: 80,
+  FOG_FAR: 350,
 };
 
 // ---------- DOM ----------
@@ -62,6 +62,18 @@ const pTime = document.getElementById("pTime");
 const pTags = document.getElementById("pTags");
 const pSnippet = document.getElementById("pSnippet");
 const pNeighbors = document.getElementById("pNeighbors");
+
+// Upload modal DOM refs
+const uploadBtn = document.getElementById("uploadBtn");
+const uploadModal = document.getElementById("uploadModal");
+const closeUploadBtn = document.getElementById("closeUpload");
+const dropZone = document.getElementById("dropZone");
+const uploadFileInput = document.getElementById("uploadFileInput");
+const uploadList = document.getElementById("uploadList");
+const uploadActions = document.getElementById("uploadActions");
+const uploadStartBtn = document.getElementById("uploadStart");
+const uploadClearBtn = document.getElementById("uploadClear");
+const uploadSummary = document.getElementById("uploadSummary");
 
 // ---------- Loading / Toast helpers ----------
 const loadingOverlay = document.getElementById("loadingOverlay");
@@ -157,7 +169,7 @@ orbit.rotateSpeed = 0.55;
 orbit.panSpeed = 0.65;
 orbit.zoomSpeed = 0.9;
 orbit.minDistance = 8;
-orbit.maxDistance = 220;
+orbit.maxDistance = 400;
 
 const fly = new PointerLockControls(camera, document.body);
 let isFly = false;
@@ -240,6 +252,9 @@ let anchors = new Float32Array(0);
 let pos = new Float32Array(0);
 let vel = new Float32Array(0);
 
+/** True until the first successful backend data load positions the camera. */
+let firstLoad = true;
+
 // ---------- Empty-state + new DOM refs ----------
 const emptyState = document.getElementById("emptyState");
 const pMsgCount = document.getElementById("pMsgCount");
@@ -298,13 +313,8 @@ let aAlpha = new Float32Array(CFG.N);
 let aBoost = new Float32Array(CFG.N);
 let aBoostTarget = new Float32Array(CFG.N);
 let aBoostBase = new Float32Array(CFG.N);
+// Initial colors — will be overwritten by rebuildPointsGeometry after backend load
 for (let i=0; i<CFG.N; i++) {
-  const c = clusterId[i];
-  const hue = (c / CFG.CLUSTERS);
-  const col = new THREE.Color().setHSL(hue, 0.65, 0.62);
-  aColor[i*3+0] = col.r;
-  aColor[i*3+1] = col.g;
-  aColor[i*3+2] = col.b;
   aAlpha[i] = 0.95;
   aBoost[i] = 1.0;
   aBoostTarget[i] = 1.0;
@@ -426,7 +436,7 @@ const starsGeom = new THREE.BufferGeometry();
 const starPos = new Float32Array(CFG.STAR_COUNT * 3);
 const starCol = new Float32Array(CFG.STAR_COUNT * 3);
 for (let i=0; i<CFG.STAR_COUNT; i++) {
-  const r = 260 + rng()*120;
+  const r = 500 + rng()*300;  // far away: 500-800 radius
   const u = rng()*2 - 1;
   const tt = rng()*Math.PI*2;
   const s = Math.sqrt(1 - u*u);
@@ -437,7 +447,7 @@ for (let i=0; i<CFG.STAR_COUNT; i++) {
   starPos[i*3+1] = y;
   starPos[i*3+2] = z;
 
-  const c = new THREE.Color().setHSL(0.58 + (rng()*0.06), 0.35, 0.75 + rng()*0.2);
+  const c = new THREE.Color().setHSL(0.58 + (rng()*0.06), 0.20, 0.55 + rng()*0.15);
   starCol[i*3+0] = c.r;
   starCol[i*3+1] = c.g;
   starCol[i*3+2] = c.b;
@@ -446,10 +456,10 @@ starsGeom.setAttribute("position", new THREE.BufferAttribute(starPos, 3));
 starsGeom.setAttribute("color", new THREE.BufferAttribute(starCol, 3));
 
 const starsMat = new THREE.PointsMaterial({
-  size: 1.2,
+  size: 0.8,
   sizeAttenuation: true,
   transparent: true,
-  opacity: 0.75,
+  opacity: 0.35,
   vertexColors: true,
   depthWrite: false,
   blending: THREE.AdditiveBlending
@@ -722,17 +732,57 @@ function populatePanel(i) {
   pSnippet.textContent = n.full || n.snippet || "";
 
   pNeighbors.innerHTML = "";
-  const neigh = topKNeighbors(i, CFG.EDGE_K);
-  for (let k=0; k<neigh.length; k++) {
-    const sim = neigh[k][0];
-    const j = neigh[k][1];
-    if (j < 0) continue;
-    const item = document.createElement("div");
-    item.className = "nbItem";
-    item.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px">${nodes[j].title}</span>
-                      <span class="badge">${sim.toFixed(2)}</span>`;
-    item.addEventListener("click", () => setSelected(j));
-    pNeighbors.appendChild(item);
+
+  // Use backend semantic search for real similarity scores
+  if (backendDataLoaded && n.backendId) {
+    pNeighbors.innerHTML = `<div class="nbItem" style="opacity:0.5"><span class="inline-spinner"></span> Finding similar…</div>`;
+    searchChats(n.title, CFG.EDGE_K + 1).then((res) => {
+      pNeighbors.innerHTML = "";
+      for (const r of res.results) {
+        // Skip the selected conversation itself
+        if (r.conversation_id === n.backendId) continue;
+        const j = nodeIdToIndex.get(String(r.conversation_id));
+        if (j == null) continue;
+        const item = document.createElement("div");
+        item.className = "nbItem";
+        item.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px">${nodes[j].title}</span>
+                          <span class="badge">${r.score.toFixed(2)}</span>`;
+        item.addEventListener("click", () => setSelected(j));
+        pNeighbors.appendChild(item);
+      }
+      if (!pNeighbors.children.length) {
+        pNeighbors.innerHTML = `<div class="nbItem" style="opacity:0.5">No similar conversations found</div>`;
+      }
+    }).catch(() => {
+      // Fallback to spatial neighbors if backend search fails
+      pNeighbors.innerHTML = "";
+      const neigh = topKNeighbors(i, CFG.EDGE_K);
+      for (let k = 0; k < neigh.length; k++) {
+        const sim = neigh[k][0];
+        const j = neigh[k][1];
+        if (j < 0) continue;
+        const item = document.createElement("div");
+        item.className = "nbItem";
+        item.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px">${nodes[j].title}</span>
+                          <span class="badge">${sim.toFixed(2)}</span>`;
+        item.addEventListener("click", () => setSelected(j));
+        pNeighbors.appendChild(item);
+      }
+    });
+  } else {
+    // Local fallback (no backend)
+    const neigh = topKNeighbors(i, CFG.EDGE_K);
+    for (let k = 0; k < neigh.length; k++) {
+      const sim = neigh[k][0];
+      const j = neigh[k][1];
+      if (j < 0) continue;
+      const item = document.createElement("div");
+      item.className = "nbItem";
+      item.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px">${nodes[j].title}</span>
+                        <span class="badge">${sim.toFixed(2)}</span>`;
+      item.addEventListener("click", () => setSelected(j));
+      pNeighbors.appendChild(item);
+    }
   }
 
   // If we have backend data, fetch full details asynchronously
@@ -1120,10 +1170,20 @@ function toggleHelp() {
 }
 
 document.addEventListener("keydown", (e) => {
-  keys.add(e.code);
-  shiftDown = e.shiftKey;
+  // Check if user is typing in an input field FIRST — before adding to keys
+  const isTyping = document.activeElement &&
+    (document.activeElement.tagName === "INPUT" ||
+     document.activeElement.tagName === "TEXTAREA" ||
+     document.activeElement.tagName === "SELECT" ||
+     document.activeElement.isContentEditable);
 
-  if (e.key === "/" && document.activeElement !== searchEl) {
+  // Only track movement keys when NOT typing in an input
+  if (!isTyping) {
+    keys.add(e.code);
+    shiftDown = e.shiftKey;
+  }
+
+  if (e.key === "/" && !isTyping) {
     e.preventDefault();
     searchEl.focus();
     searchEl.select();
@@ -1131,7 +1191,7 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
-  if (e.key === "?") {
+  if (e.key === "?" && !isTyping) {
     e.preventDefault();
     toggleHelp();
     return;
@@ -1140,10 +1200,26 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     e.preventDefault();
     if (document.pointerLockElement) document.exitPointerLock();
-    setSelected(-1);
-    setHovered(-1);
-    hideResults();
-    helpEl.style.display = "none";
+    if (isTyping) {
+      document.activeElement.blur();
+      hideResults();
+    } else {
+      setSelected(-1);
+      setHovered(-1);
+      hideResults();
+      helpEl.style.display = "none";
+    }
+    return;
+  }
+
+  // Skip game-style bindings when typing in an input
+  if (isTyping) {
+    // Still allow arrow keys and Enter for search results navigation
+    if (resultsEl.style.display === "block") {
+      if (e.key === "ArrowDown") { e.preventDefault(); setActiveResult(activeResIndex + 1); }
+      if (e.key === "ArrowUp") { e.preventDefault(); setActiveResult(activeResIndex - 1); }
+      if (e.key === "Enter") { e.preventDefault(); selectActiveResult(); }
+    }
     return;
   }
 
@@ -1174,6 +1250,12 @@ document.addEventListener("keydown", (e) => {
 document.addEventListener("keyup", (e) => {
   keys.delete(e.code);
   shiftDown = e.shiftKey;
+});
+
+// Clear all keys when window loses focus to prevent stuck camera drift
+window.addEventListener("blur", () => { keys.clear(); shiftDown = false; });
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) { keys.clear(); shiftDown = false; }
 });
 
 function resetCamera() {
@@ -1292,9 +1374,12 @@ function updateNodes(dt, t) {
   for (let i=0; i<CFG.N; i++) {
     if (cf >= 0) {
       const match = (clusterId[i] === cf);
-      aAlpha[i] = match ? 0.95 : 0.06;
+      aAlpha[i] = match ? 1.0 : 0.04;
+      // Boost matching cluster nodes so they "light up"
+      aBoostTarget[i] = match ? 1.8 : 0.5;
     } else {
       aAlpha[i] = 0.95;
+      aBoostTarget[i] = 1.0;
     }
 
     aa.set(anchors[i*3+0], anchors[i*3+1], anchors[i*3+2]);
@@ -1421,6 +1506,51 @@ buildAllEdges();
 // ---------- Helper functions for dynamic data loading ----------
 
 /**
+ * Auto-fit camera to enclose all loaded nodes with comfortable padding.
+ */
+function autoFitCamera() {
+  if (CFG.N === 0) return;
+
+  // Compute bounding sphere from anchor positions
+  let cx = 0, cy = 0, cz = 0;
+  for (let i = 0; i < CFG.N; i++) {
+    cx += anchors[i * 3 + 0];
+    cy += anchors[i * 3 + 1];
+    cz += anchors[i * 3 + 2];
+  }
+  cx /= CFG.N; cy /= CFG.N; cz /= CFG.N;
+
+  let maxR = 0;
+  for (let i = 0; i < CFG.N; i++) {
+    const dx = anchors[i * 3 + 0] - cx;
+    const dy = anchors[i * 3 + 1] - cy;
+    const dz = anchors[i * 3 + 2] - cz;
+    const r = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (r > maxR) maxR = r;
+  }
+
+  // Position camera to see the whole bounding sphere
+  const fov = camera.fov * (Math.PI / 180);
+  const dist = (maxR / Math.sin(fov / 2)) * 1.2; // 1.2x padding
+
+  orbit.target.set(cx, cy, cz);
+  camera.position.set(cx, cy + dist * 0.25, cz + dist);
+  orbit.update();
+
+  // Update home position for reset
+  homeCam.pos.copy(camera.position);
+  homeCam.target.copy(orbit.target);
+
+  // Also update fog to match the data spread
+  const fogNear = dist * 0.15;
+  const fogFar = dist * 2.5;
+  scene.fog.near = fogNear;
+  scene.fog.far = fogFar;
+  pointMat.uniforms.uFogNear.value = fogNear;
+  pointMat.uniforms.uFogFar.value = fogFar;
+}
+
+/**
  * Rebuild cluster filter dropdown with backend cluster data
  */
 function rebuildClusterFilter(clusterIds, clusterMetadata = null) {
@@ -1445,6 +1575,52 @@ function rebuildClusterFilter(clusterIds, clusterMetadata = null) {
 
     clusterSel.appendChild(opt);
   }
+
+  // Build visual cluster legend with colored dots
+  buildClusterLegend(clusterIds, clusterMetadata);
+}
+
+/** Hex palette matching the shader CLUSTER_PALETTE */
+const CLUSTER_HEX = [
+  "#00D4FF", "#FF6B9D", "#7CFF6B", "#FFA64D", "#B48CFF",
+  "#FFE44D", "#FF4D6A", "#4DFFF0", "#FF8CDB", "#8CFFB4",
+  "#6BAAFF", "#FFB86B"
+];
+
+/**
+ * Build an interactive cluster color legend in the bottom-left panel.
+ */
+function buildClusterLegend(clusterIds, clusterMetadata) {
+  const legend = document.getElementById("clusterLegend");
+  if (!legend) return;
+  legend.innerHTML = "";
+
+  for (const cid of clusterIds) {
+    const color = CLUSTER_HEX[cid % CLUSTER_HEX.length];
+    let name = `Cluster ${cid}`;
+    let count = 0;
+
+    if (clusterMetadata) {
+      const meta = clusterMetadata.find(m => m.cluster_id === cid);
+      if (meta) {
+        name = meta.cluster_name || name;
+        count = meta.count || 0;
+      }
+    }
+
+    const item = document.createElement("div");
+    item.className = "clusterLegendItem";
+    item.innerHTML = `
+      <span class="clusterDot" style="background:${color}; color:${color}"></span>
+      <span>${name}</span>
+      ${count ? `<span class="clusterLegendCount">${count}</span>` : ""}
+    `;
+    item.addEventListener("click", () => {
+      clusterSel.value = String(cid);
+      clusterSel.dispatchEvent(new Event("change"));
+    });
+    legend.appendChild(item);
+  }
 }
 
 /**
@@ -1465,13 +1641,25 @@ function rebuildPointsGeometry() {
   aBoostTarget = new Float32Array(N);
   aBoostBase = new Float32Array(N);
 
-  // Find max cluster ID for color distribution
-  const maxCluster = N > 0 ? Math.max(...Array.from(clusterId)) : 1;
+  // Curated cluster color palette — maximally distinct, vibrant, accessible
+  const CLUSTER_PALETTE = [
+    new THREE.Color(0x00D4FF),  // 0  cyan
+    new THREE.Color(0xFF6B9D),  // 1  pink
+    new THREE.Color(0x7CFF6B),  // 2  lime green
+    new THREE.Color(0xFFA64D),  // 3  warm orange
+    new THREE.Color(0xB48CFF),  // 4  lavender
+    new THREE.Color(0xFFE44D),  // 5  golden yellow
+    new THREE.Color(0xFF4D6A),  // 6  coral red
+    new THREE.Color(0x4DFFF0),  // 7  turquoise
+    new THREE.Color(0xFF8CDB),  // 8  hot pink
+    new THREE.Color(0x8CFFB4),  // 9  mint
+    new THREE.Color(0x6BAAFF),  // 10 sky blue
+    new THREE.Color(0xFFB86B),  // 11 peach
+  ];
 
   for (let i = 0; i < N; i++) {
     const c = clusterId[i];
-    const hue = (c / (maxCluster + 1));
-    const col = new THREE.Color().setHSL(hue, 0.65, 0.62);
+    const col = CLUSTER_PALETTE[c % CLUSTER_PALETTE.length];
     aColor[i * 3 + 0] = col.r;
     aColor[i * 3 + 1] = col.g;
     aColor[i * 3 + 2] = col.b;
@@ -1491,6 +1679,280 @@ function rebuildPointsGeometry() {
   geom.attributes.aAlpha.needsUpdate = true;
   geom.attributes.aBoost.needsUpdate = true;
 }
+
+// ---------- Upload modal logic ----------
+/** @type {File[]} Files staged for upload */
+let stagedFiles = [];
+let uploadInProgress = false;
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
+function openUploadModal() {
+  if (uploadModal) {
+    uploadModal.style.display = "flex";
+    resetUploadState();
+  }
+}
+
+function closeUploadModal() {
+  if (uploadModal) {
+    uploadModal.style.display = "none";
+    if (!uploadInProgress) resetUploadState();
+  }
+}
+
+function resetUploadState() {
+  stagedFiles = [];
+  renderFileList();
+  if (uploadSummary) { uploadSummary.style.display = "none"; uploadSummary.textContent = ""; }
+  if (uploadActions) uploadActions.style.display = "none";
+}
+
+function fmtSize(bytes) {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+}
+
+/** Validate and add files (dedup by name). */
+function addFiles(fileListOrArray) {
+  const newFiles = Array.from(fileListOrArray);
+  const existing = new Set(stagedFiles.map(f => f.name));
+  let rejected = 0;
+
+  for (const f of newFiles) {
+    if (existing.has(f.name)) continue;
+    if (!f.name.endsWith(".html")) {
+      rejected++;
+      showToast(`Skipped "${f.name}" — only .html files accepted`, "info", 3000);
+      continue;
+    }
+    if (f.size > MAX_FILE_SIZE) {
+      rejected++;
+      showToast(`Skipped "${f.name}" — exceeds 10 MB limit`, "info", 3000);
+      continue;
+    }
+    stagedFiles.push(f);
+    existing.add(f.name);
+  }
+
+  renderFileList();
+  if (uploadActions) uploadActions.style.display = stagedFiles.length ? "flex" : "none";
+  if (uploadSummary) uploadSummary.style.display = "none";
+}
+
+function removeFile(idx) {
+  stagedFiles.splice(idx, 1);
+  renderFileList();
+  if (uploadActions) uploadActions.style.display = stagedFiles.length ? "flex" : "none";
+}
+
+function renderFileList() {
+  if (!uploadList) return;
+  uploadList.innerHTML = "";
+
+  for (let i = 0; i < stagedFiles.length; i++) {
+    const f = stagedFiles[i];
+    const item = document.createElement("div");
+    item.className = "uploadItem";
+    item.id = `uploadItem-${i}`;
+    item.innerHTML = `
+      <div>
+        <div class="fileName">${f.name}</div>
+        <div class="fileSize">${fmtSize(f.size)}</div>
+      </div>
+      <div class="fileStatus">
+        <button class="removeFile" data-idx="${i}" title="Remove">&times;</button>
+      </div>
+    `;
+    uploadList.appendChild(item);
+  }
+
+  // Attach remove handlers
+  uploadList.querySelectorAll(".removeFile").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      if (uploadInProgress) return;
+      removeFile(parseInt(e.currentTarget.dataset.idx, 10));
+    });
+  });
+}
+
+/** Set per-file status (uploading / success / error). */
+function setFileStatus(idx, status, detail = "") {
+  const item = document.getElementById(`uploadItem-${idx}`);
+  if (!item) return;
+
+  item.classList.remove("success", "error");
+  const statusEl = item.querySelector(".fileStatus");
+
+  if (status === "uploading") {
+    statusEl.innerHTML = `<span class="inline-spinner"></span>`;
+    // Add progress bar
+    let prog = item.querySelector(".uploadProgress");
+    if (!prog) {
+      prog = document.createElement("div");
+      prog.className = "uploadProgress";
+      prog.innerHTML = `<div class="bar"></div>`;
+      item.appendChild(prog);
+    }
+    prog.querySelector(".bar").style.width = "30%";
+  } else if (status === "success") {
+    item.classList.add("success");
+    statusEl.innerHTML = `<span style="color:var(--good)">✓</span>`;
+    const prog = item.querySelector(".uploadProgress");
+    if (prog) prog.querySelector(".bar").style.width = "100%";
+  } else if (status === "error") {
+    item.classList.add("error");
+    statusEl.innerHTML = `<span style="color:var(--bad)" title="${detail}">✗</span>`;
+    const prog = item.querySelector(".uploadProgress");
+    if (prog) prog.querySelector(".bar").style.width = "100%";
+    if (prog) prog.querySelector(".bar").style.background = "var(--bad)";
+  }
+}
+
+/** Upload all staged files sequentially. */
+async function startUpload() {
+  if (!stagedFiles.length || uploadInProgress) return;
+  uploadInProgress = true;
+
+  if (uploadStartBtn) uploadStartBtn.disabled = true;
+  if (uploadClearBtn) uploadClearBtn.disabled = true;
+
+  let success = 0;
+  let failed = 0;
+
+  for (let i = 0; i < stagedFiles.length; i++) {
+    setFileStatus(i, "uploading");
+    try {
+      const result = await uploadChatFile(stagedFiles[i], i === stagedFiles.length - 1);
+      if (result.success) {
+        success++;
+        setFileStatus(i, "success");
+      } else {
+        failed++;
+        setFileStatus(i, "error", result.error || "Unknown error");
+      }
+    } catch (err) {
+      failed++;
+      setFileStatus(i, "error", err.message);
+    }
+  }
+
+  uploadInProgress = false;
+  if (uploadStartBtn) uploadStartBtn.disabled = false;
+  if (uploadClearBtn) uploadClearBtn.disabled = false;
+
+  // Show summary
+  if (uploadSummary) {
+    uploadSummary.style.display = "block";
+    if (failed === 0) {
+      uploadSummary.className = "uploadSummary allGood";
+      uploadSummary.textContent = `✓ ${success} file${success !== 1 ? "s" : ""} uploaded successfully`;
+    } else {
+      uploadSummary.className = "uploadSummary hasErrors";
+      uploadSummary.textContent = `${success} succeeded, ${failed} failed`;
+    }
+  }
+
+  // Refresh 3D visualization with new data
+  if (success > 0) {
+    // Close modal immediately and show loading overlay
+    closeUploadModal();
+    showLoading("Processing conversations — clustering & positioning…");
+
+    // Poll the backend until the node count stabilises and positions are set
+    // (the ingest endpoint processes all convs + UMAP before returning, but
+    //  the browser may have already gotten a partial response on slow networks)
+    let attempts = 0;
+    const maxAttempts = 60;  // up to ~60 s
+    let lastCount = -1;
+    let stableRounds = 0;
+
+    while (attempts < maxAttempts) {
+      await new Promise(r => setTimeout(r, 1000));
+      attempts++;
+      try {
+        const check = await fetchChats();
+        const count = check.nodes ? check.nodes.length : 0;
+        // Check that nodes exist AND have real positions (not all at origin)
+        const hasPositions = count > 0 && check.nodes.some(
+          n => n.position && (n.position[0] !== 0 || n.position[1] !== 0 || n.position[2] !== 0)
+        );
+        if (hasPositions && count === lastCount) {
+          stableRounds++;
+        } else {
+          stableRounds = 0;
+        }
+        lastCount = count;
+        showLoading(`Processing conversations… ${count} ready`);
+        // Data is stable for 2 consecutive checks and has real positions
+        if (hasPositions && stableRounds >= 2) break;
+      } catch {
+        // Backend still busy — keep waiting
+      }
+    }
+
+    // Force first-load so camera fits to the new data
+    firstLoad = true;
+    await tryLoadBackendData();
+  }
+}
+
+// Wire up upload UI events
+if (uploadBtn) uploadBtn.addEventListener("click", openUploadModal);
+if (closeUploadBtn) closeUploadBtn.addEventListener("click", closeUploadModal);
+
+if (uploadFileInput) {
+  uploadFileInput.addEventListener("change", (e) => {
+    addFiles(e.target.files);
+    uploadFileInput.value = ""; // reset so same file can be re-selected
+  });
+}
+
+if (uploadStartBtn) uploadStartBtn.addEventListener("click", startUpload);
+if (uploadClearBtn) uploadClearBtn.addEventListener("click", resetUploadState);
+
+// Close modal on backdrop click
+if (uploadModal) {
+  uploadModal.addEventListener("click", (e) => {
+    if (e.target === uploadModal && !uploadInProgress) closeUploadModal();
+  });
+}
+
+// Drag-and-drop on the drop zone
+if (dropZone) {
+  dropZone.addEventListener("dragover", (e) => { e.preventDefault(); dropZone.classList.add("dragover"); });
+  dropZone.addEventListener("dragleave", () => { dropZone.classList.remove("dragover"); });
+  dropZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropZone.classList.remove("dragover");
+    if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+  });
+}
+
+// Global drag-and-drop: open modal when dragging files over the page
+let bodyDragCounter = 0;
+document.addEventListener("dragenter", (e) => {
+  e.preventDefault();
+  bodyDragCounter++;
+  if (bodyDragCounter === 1 && uploadModal && uploadModal.style.display !== "flex") {
+    openUploadModal();
+  }
+});
+document.addEventListener("dragleave", (e) => {
+  e.preventDefault();
+  bodyDragCounter--;
+  if (bodyDragCounter <= 0) bodyDragCounter = 0;
+});
+document.addEventListener("dragover", (e) => e.preventDefault());
+document.addEventListener("drop", (e) => {
+  e.preventDefault();
+  bodyDragCounter = 0;
+  // If dropped outside the dropZone but modal is open, add files anyway
+  if (uploadModal && uploadModal.style.display === "flex" && e.dataTransfer.files.length) {
+    addFiles(e.dataTransfer.files);
+  }
+});
 
 // ---------- Backend data bootstrap ----------
 /**
@@ -1515,14 +1977,54 @@ async function tryLoadBackendData() {
 
     showLoading("Loading conversations…");
 
-    // 2. Fetch visualization data
-    const viz = await fetchChats();
+    // 2. Fetch visualization data — but poll until fully ready
+    //    (handles page-refresh mid-ingest: nodes committed but UMAP not done yet)
+    let viz = await fetchChats();
 
     if (!viz.nodes || viz.nodes.length === 0) {
       showToast("No conversations yet — upload a chat export to get started", "info", 5000);
       hideLoading();
       showEmptyState();
       return;
+    }
+
+    // Check if data is fully processed (UMAP has assigned real positions)
+    const allHavePositions = (nodes) =>
+      nodes.every(n => n.position && (n.position[0] !== 0 || n.position[1] !== 0 || n.position[2] !== 0));
+    const hasClusters = (data) => data.clusters && data.clusters.length > 0;
+
+    if (!allHavePositions(viz.nodes) || !hasClusters(viz)) {
+      // Data exists but UMAP/clustering hasn't finished — poll until ready
+      showLoading(`Processing ${viz.nodes.length} conversations — waiting for positions…`);
+      let attempts = 0;
+      const maxAttempts = 120; // up to ~2 minutes
+      let lastCount = viz.nodes.length;
+      let stableRounds = 0;
+
+      while (attempts < maxAttempts) {
+        await new Promise(r => setTimeout(r, 1500));
+        attempts++;
+        try {
+          const check = await fetchChats();
+          const count = check.nodes ? check.nodes.length : 0;
+          const ready = count > 0 && allHavePositions(check.nodes) && hasClusters(check);
+
+          if (ready && count === lastCount) {
+            stableRounds++;
+          } else {
+            stableRounds = 0;
+          }
+          lastCount = count;
+          showLoading(`Processing conversations… ${count} found${ready ? " — finalising" : ""}`);
+
+          if (ready && stableRounds >= 2) {
+            viz = check; // use the fully-ready data
+            break;
+          }
+        } catch {
+          // Backend busy — keep waiting
+        }
+      }
     }
 
     // 3. Populate data arrays from backend
@@ -1557,15 +2059,19 @@ async function tryLoadBackendData() {
       backendClusters.add(node.cluster_id ?? 0);
 
       // Anchor = backend-generated 3D coordinate (UMAP projection)
-      const [ax, ay, az] = node.position || [0, 0, 0];
+      // Scale up by SPACE_SCALE so nodes fill the 3D world nicely
+      const [rx, ry, rz] = node.position || [0, 0, 0];
+      const ax = rx * CFG.SPACE_SCALE;
+      const ay = ry * CFG.SPACE_SCALE;
+      const az = rz * CFG.SPACE_SCALE;
       anchors[i * 3 + 0] = ax;
       anchors[i * 3 + 1] = ay;
       anchors[i * 3 + 2] = az;
 
       // Start pos near anchor with slight jitter for pop-in effect
-      pos[i * 3 + 0] = ax + (Math.random() - 0.5) * 0.6;
-      pos[i * 3 + 1] = ay + (Math.random() - 0.5) * 0.6;
-      pos[i * 3 + 2] = az + (Math.random() - 0.5) * 0.6;
+      pos[i * 3 + 0] = ax + (Math.random() - 0.5) * 2.0;
+      pos[i * 3 + 1] = ay + (Math.random() - 0.5) * 2.0;
+      pos[i * 3 + 2] = az + (Math.random() - 0.5) * 2.0;
 
       vel[i * 3 + 0] = 0;
       vel[i * 3 + 1] = 0;
@@ -1589,6 +2095,12 @@ async function tryLoadBackendData() {
 
     backendDataLoaded = true;
     rebuildIdIndex();
+
+    // Auto-fit camera only on first load — after that the user controls the camera
+    if (firstLoad) {
+      autoFitCamera();
+      firstLoad = false;
+    }
 
     hideLoading();
     hideEmptyState();
@@ -1617,12 +2129,38 @@ if (emptyUploadInput) {
     if (!file) return;
 
     hideEmptyState();
-    showLoading("Uploading and processing chat export…");
+    showLoading("Uploading chat export…");
 
     try {
-      const result = await uploadChatFile(file);
-      showToast(`Uploaded: ${result.filename || file.name}`, "success", 3000);
-      // Reload backend data to show new conversations
+      const result = await uploadChatFile(file, true);
+      if (!result.success) {
+        throw new Error(result.error || "Upload failed");
+      }
+
+      showLoading("Processing conversations — clustering & positioning…");
+
+      // Poll until data is fully ready (UMAP + clustering done)
+      let attempts = 0;
+      let lastCount = -1;
+      let stableRounds = 0;
+      while (attempts < 60) {
+        await new Promise(r => setTimeout(r, 1000));
+        attempts++;
+        try {
+          const check = await fetchChats();
+          const count = check.nodes ? check.nodes.length : 0;
+          const hasPositions = count > 0 && check.nodes.some(
+            n => n.position && (n.position[0] !== 0 || n.position[1] !== 0 || n.position[2] !== 0)
+          );
+          if (hasPositions && count === lastCount) stableRounds++;
+          else stableRounds = 0;
+          lastCount = count;
+          showLoading(`Processing conversations… ${count} ready`);
+          if (hasPositions && stableRounds >= 2) break;
+        } catch { /* keep waiting */ }
+      }
+
+      firstLoad = true;
       await tryLoadBackendData();
     } catch (err) {
       console.error("[upload] Failed:", err);
@@ -1630,7 +2168,6 @@ if (emptyUploadInput) {
       hideLoading();
       showEmptyState();
     } finally {
-      // Reset input so re-uploading the same file works
       emptyUploadInput.value = "";
     }
   });
@@ -1650,10 +2187,10 @@ if (retryButton) {
 showEmptyState();
 tryLoadBackendData();
 
-// Safety timeout in case something hangs
+// Safety timeout in case something hangs (3 min — ingest can take a while)
 setTimeout(() => {
   if (loadingOverlay && !loadingOverlay.classList.contains("hidden")) {
     hideLoading();
     if (CFG.N === 0) showEmptyState();
   }
-}, 15000);
+}, 180000);

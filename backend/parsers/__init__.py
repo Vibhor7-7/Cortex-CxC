@@ -21,7 +21,7 @@ Usage:
 from backend.parsers.base_parser import BaseParser, ParserFactory
 from backend.parsers.chatgpt_parser import ChatGPTParser
 from backend.parsers.claude_parser import ClaudeParser
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 
 def parse_html(html_content: str) -> Optional[Dict]:
@@ -55,6 +55,37 @@ def parse_html(html_content: str) -> Optional[Dict]:
     return None
 
 
+def parse_all_html(html_content: str) -> List[Dict]:
+    """
+    Parse ALL conversations from an HTML export.
+
+    ChatGPT exports can contain dozens of conversations in one file.
+    This returns every conversation found.  For formats that only
+    support a single conversation (e.g. Claude), returns a one-element
+    list.
+
+    Args:
+        html_content: Raw HTML string
+
+    Returns:
+        List of parsed conversation dicts (may be empty).
+    """
+    fmt = ParserFactory.detect_format_type(html_content)
+
+    if fmt == 'chatgpt':
+        parser = ChatGPTParser(html_content)
+        return parser.parse_all()
+
+    # For other formats, fall back to single parse
+    parser = ParserFactory.create_parser(html_content)
+    if parser:
+        result = parser.parse()
+        if result and result.get('messages'):
+            return [result]
+
+    return []
+
+
 def detect_format(html_content: str) -> Optional[str]:
     """
     Detect the format of an HTML chat export.
@@ -80,5 +111,6 @@ __all__ = [
     'ClaudeParser',
     'ParserFactory',
     'parse_html',
+    'parse_all_html',
     'detect_format',
 ]
