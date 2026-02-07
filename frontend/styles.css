@@ -8,6 +8,10 @@
   --accent: rgba(140, 190, 255, 0.95);
   --bad: rgba(255, 120, 140, 0.9);
   --good: rgba(120, 255, 200, 0.9);
+  --panel-w: 340px;
+  --panel-gap: 14px;
+  --panel-top: 64px;
+  --ui-pad: 14px;
 }
 
 html, body {
@@ -27,13 +31,13 @@ canvas { display: block; }
 }
 
 .topbar {
-  position: absolute; top: 14px; left: 14px; right: 14px;
-  display: flex; gap: 10px; align-items: center;
+  position: absolute; top: var(--ui-pad); left: var(--ui-pad); right: calc(var(--ui-pad) + var(--panel-w) + var(--panel-gap));
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
   pointer-events: auto;
 }
 
 .searchWrap {
-  flex: 1;
+  flex: 1 1 320px;
   display: flex; gap: 10px; align-items: center;
   background: var(--panel);
   border: 1px solid var(--border);
@@ -65,6 +69,7 @@ canvas { display: block; }
   pointer-events: auto;
   box-shadow: 0 10px 30px rgba(0,0,0,0.35);
   user-select: none;
+  flex: 0 0 auto;
 }
 
 .pill label {
@@ -95,8 +100,8 @@ input[type="range"] {
 /* Search results dropdown */
 #results {
   position: absolute;
-  top: 62px; left: 14px;
-  width: min(520px, calc(100vw - 28px));
+  top: calc(var(--ui-pad) + 50px); left: var(--ui-pad);
+  width: min(520px, calc(100vw - (var(--ui-pad) * 2) - var(--panel-w) - var(--panel-gap)));
   max-height: 300px;
   overflow: auto;
   background: var(--panel);
@@ -143,9 +148,9 @@ input[type="range"] {
 /* Right panel */
 #panel {
   position: absolute;
-  top: 14px; right: 14px;
-  width: 340px;
-  max-width: calc(100vw - 28px);
+  top: var(--panel-top); right: var(--ui-pad);
+  width: var(--panel-w);
+  max-width: calc(100vw - (var(--ui-pad) * 2));
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -213,7 +218,7 @@ input[type="range"] {
 /* Bottom-left legend */
 #legend {
   position: absolute;
-  left: 14px; bottom: 14px;
+  left: var(--ui-pad); bottom: var(--ui-pad);
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -328,4 +333,11 @@ input[type="range"] {
 @media (max-width: 860px) {
   #panel { display: none; }
   #legend { min-width: 200px; }
+  .topbar { right: var(--ui-pad); }
+  #results { width: min(520px, calc(100vw - (var(--ui-pad) * 2))); }
+}
+
+@media (max-width: 640px) {
+  .topbar { gap: 8px; }
+  .pill input[type="range"] { width: 120px; }
 }
