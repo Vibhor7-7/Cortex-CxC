@@ -89,7 +89,7 @@ class TestE2ESearch(unittest.TestCase):
             self.assertIsNotNone(conversation.openai_file_id,
                 "Conversation should have openai_file_id after ingestion")
 
-        print(f"✅ Ingested conversation: {data['conversation_id']}")
+        print(f" Ingested conversation: {data['conversation_id']}")
         print(f"   OpenAI File ID: {conversation.openai_file_id}")
 
     def test_02_search_for_ingested_conversation(self):
@@ -117,7 +117,7 @@ class TestE2ESearch(unittest.TestCase):
         self.assertIn("results", data)
         self.assertIn("total_results", data)
 
-        print(f"✅ Search returned {data['total_results']} results")
+        print(f" Search returned {data['total_results']} results")
 
         # Check if our conversation is in results
         if data['total_results'] > 0:
@@ -127,7 +127,7 @@ class TestE2ESearch(unittest.TestCase):
             )
 
             if found_our_conversation:
-                print("✅ Found our ingested conversation in search results!")
+                print(" Found our ingested conversation in search results!")
                 result = next(
                     r for r in data['results']
                     if r['conversation_id'] in self.__class__.conversation_ids
@@ -136,7 +136,7 @@ class TestE2ESearch(unittest.TestCase):
                 print(f"   Score: {result['score']}")
                 print(f"   Topics: {result['topics']}")
             else:
-                print("⚠️ Our conversation not in top results (may need more indexing time)")
+                print(" Our conversation not in top results (may need more indexing time)")
 
     def test_03_retrieve_conversation_details(self):
         """Test retrieving full conversation details."""
@@ -159,7 +159,7 @@ class TestE2ESearch(unittest.TestCase):
         # Verify caching headers
         self.assertIn("cache-control", response.headers.lower() or "Cache-Control" in response.headers)
 
-        print(f"✅ Retrieved conversation details")
+        print(f" Retrieved conversation details")
         print(f"   Title: {data['title']}")
         print(f"   Messages: {len(data['messages'])}")
 
@@ -179,7 +179,7 @@ class TestE2ESearch(unittest.TestCase):
         self.assertIsNotNone(cache_control, "Cache-Control header should be present")
         self.assertIn("60", cache_control, "Should cache for 60 seconds")
 
-        print(f"✅ Listed {len(data)} conversations")
+        print(f" Listed {len(data)} conversations")
         print(f"   Cache-Control: {cache_control}")
 
     def test_05_search_with_filters(self):
@@ -200,7 +200,7 @@ class TestE2ESearch(unittest.TestCase):
         self.assertIn("results", data)
         self.assertIn("total_results", data)
 
-        print(f"✅ Search with filters returned {data['total_results']} results")
+        print(f" Search with filters returned {data['total_results']} results")
 
     def test_06_vector_store_stats(self):
         """Test vector store statistics endpoint."""
@@ -211,7 +211,7 @@ class TestE2ESearch(unittest.TestCase):
         data = response.json()
 
         self.assertIn("id", data)
-        print(f"✅ Vector store stats:")
+        print(f" Vector store stats:")
         print(f"   ID: {data.get('id')}")
         print(f"   Name: {data.get('name')}")
         print(f"   Status: {data.get('status')}")

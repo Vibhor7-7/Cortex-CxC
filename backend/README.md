@@ -36,10 +36,10 @@ This project uses environment variables for configuration. Follow these steps:
 
 ### Security Notes
 
-- ✅ `.env` is already in `.gitignore` - it will NOT be committed
-- ✅ Each contributor maintains their own local `.env` file
-- ✅ Never share your `.env` file or commit it to version control
-- ✅ Use `.env.example` as the template (this IS committed)
+-  `.env` is already in `.gitignore` - it will NOT be committed
+-  Each contributor maintains their own local `.env` file
+-  Never share your `.env` file or commit it to version control
+-  Use `.env.example` as the template (this IS committed)
 
 ### Troubleshooting
 

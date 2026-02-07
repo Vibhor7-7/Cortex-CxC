@@ -195,9 +195,9 @@ async def ingest_single_chat(
                     if conversation:
                         conversation.openai_file_id = file_id
                         db.commit()
-                print(f"✅ Conversation uploaded to vector store: {file_id}")
+                print(f" Conversation uploaded to vector store: {file_id}")
             else:
-                print(f"⚠️ Vector store upload status: {status}")
+                print(f" Vector store upload status: {status}")
         except Exception as e:
             # Don't fail ingestion if vector store upload fails
             print(f"Warning: Vector store upload failed: {e}")

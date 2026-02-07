@@ -38,20 +38,20 @@ async def lifespan(app: FastAPI):
     Handles startup and shutdown events.
     """
     # Startup
-    print("🚀 Starting CORTEX backend...")
+    print(" Starting CORTEX backend...")
     
     # Initialize database
     try:
         init_db()
-        print("✅ Database initialized successfully")
+        print(" Database initialized successfully")
     except Exception as e:
-        print(f"⚠️  Database initialization error: {e}")
+        print(f"  Database initialization error: {e}")
     
     # Verify OpenAI API key is configured
     if not os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY") == "your_openai_api_key_here":
-        print("⚠️  Warning: OPENAI_API_KEY not configured in .env file")
+        print("  Warning: OPENAI_API_KEY not configured in .env file")
     else:
-        print("✅ OpenAI API key configured")
+        print(" OpenAI API key configured")
     
     print("✨ CORTEX backend ready!")
     

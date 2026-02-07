@@ -155,7 +155,7 @@ def create_sample_data():
         
         db.commit()
         
-    print(f"✅ Created 2 sample conversations with messages and embeddings")
+    print(f" Created 2 sample conversations with messages and embeddings")
 
 
 def main():
@@ -173,19 +173,19 @@ def main():
     try:
         # Drop existing tables if requested
         if args.drop:
-            print("\n⚠️  WARNING: Dropping all existing tables...")
+            print("\n  WARNING: Dropping all existing tables...")
             response = input("Are you sure? This will delete all data! (yes/no): ")
             if response.lower() == "yes":
                 drop_db()
-                print("✅ Dropped all tables")
+                print(" Dropped all tables")
             else:
-                print("❌ Aborted")
+                print(" Aborted")
                 return
         
         # Create tables
         print("\n📦 Creating database tables...")
         init_db()
-        print("✅ Successfully created all tables:")
+        print(" Successfully created all tables:")
         print("   - conversations")
         print("   - messages")
         print("   - embeddings")
@@ -203,7 +203,7 @@ def main():
         print()
         
     except Exception as e:
-        print(f"\n❌ Error during initialization: {e}")
+        print(f"\n Error during initialization: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)

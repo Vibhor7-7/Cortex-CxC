@@ -13,11 +13,11 @@ Task 3.2: OpenAI Vector Store Search
 - 3.2.3: Result mapping and metadata
 
 Acceptance Criteria:
-✅ Newly ingested conversations are searchable via vector store
-✅ Vector store file ingestion reaches 'completed' state
-✅ Each result can be mapped back to conversation_id
-✅ Search returns relevant results for both keyword and semantic queries
-✅ Results include per-chunk scores and content
+ Newly ingested conversations are searchable via vector store
+ Vector store file ingestion reaches 'completed' state
+ Each result can be mapped back to conversation_id
+ Search returns relevant results for both keyword and semantic queries
+ Results include per-chunk scores and content
 """
 
 import unittest

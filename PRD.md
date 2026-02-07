@@ -14,23 +14,23 @@ CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interac
 
 ### 1.2 Current Status
 - **Frontend:** 95% complete - Fully functional 3D visualization with client-side generated sample data (vanilla HTML/CSS/JS + Three.js)
-- **Backend:** ✅ **Phase 1-3 COMPLETE**
-  - ✅ Phase 1: Backend Infrastructure (100%) - 16/16 tests passing
-  - ✅ Phase 2: Chat Ingestion Pipeline (100%) - 53/53 tests passing
-  - ✅ Phase 3: Hybrid Search System (100%) - 24/24 tests passing
+- **Backend:**  **Phase 1-3 COMPLETE**
+  -  Phase 1: Backend Infrastructure (100%) - 16/16 tests passing
+  -  Phase 2: Chat Ingestion Pipeline (100%) - 53/53 tests passing
+  -  Phase 3: Hybrid Search System (100%) - 24/24 tests passing
   - ⚪ Phase 4: MCP Integration (0%) - Not started
 - **MCP Layer:** 0% complete - Empty files, requires full implementation
 - **Overall Completion:** ~85% (Phase 1-3 complete, Phase 4 pending)
 
 **Test Summary:**
-- ✅ 16/16 Database & Models tests (test_models.py)
-- ✅ 18/18 Parser tests (test_parsers.py) - Includes real 570KB ChatGPT export
-- ✅ 19/19 Service tests (test_services.py) - Normalizer, Summarizer, Embedder, UMAP, Clusterer
-- ✅ 9/9 API Integration tests (test_api_integration.py)
-- ✅ 16/16 Task 2.3 Ingestion tests (test_task_2_3.py)
-- ✅ 11/11 Task 3.1 & 3.2 Vector Store tests (test_task_3_1_3_2.py)
-- ✅ 7/7 Task 3.3 Search Evaluation tests (test_search_evaluation.py)
-- ✅ 6/6 Task 3.4 E2E Integration tests (test_e2e_search.py)
+-  16/16 Database & Models tests (test_models.py)
+-  18/18 Parser tests (test_parsers.py) - Includes real 570KB ChatGPT export
+-  19/19 Service tests (test_services.py) - Normalizer, Summarizer, Embedder, UMAP, Clusterer
+-  9/9 API Integration tests (test_api_integration.py)
+-  16/16 Task 2.3 Ingestion tests (test_task_2_3.py)
+-  11/11 Task 3.1 & 3.2 Vector Store tests (test_task_3_1_3_2.py)
+-  7/7 Task 3.3 Search Evaluation tests (test_search_evaluation.py)
+-  6/6 Task 3.4 E2E Integration tests (test_e2e_search.py)
 - **Total: 102/102 tests passing**
 
 ### 1.3 Project Goals
@@ -100,13 +100,13 @@ CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interac
 
 ## 3. Detailed Task Breakdown
 
-## PHASE 1: Backend Foundation & Database Setup ✅ **COMPLETE**
+## PHASE 1: Backend Foundation & Database Setup  **COMPLETE**
 
-### Task 1.1: Initialize Backend Infrastructure ✅ **COMPLETE**
+### Task 1.1: Initialize Backend Infrastructure  **COMPLETE**
 **Priority:** P0 (Critical)
 **Estimated Time:** 2 hours
 **Owner:** Backend Team
-**Status:** ✅ COMPLETE - All acceptance criteria met
+**Status:**  COMPLETE - All acceptance criteria met
 
 #### Sub-tasks:
 - [x] **1.1.1** Create `backend/requirements.txt` with dependencies:
@@ -146,27 +146,27 @@ CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interac
   ```
 
 - [x] **1.1.4** Implement `backend/main.py`:
-  - ✅ FastAPI app initialization
-  - ✅ CORS middleware (allow frontend origin)
-  - ✅ Health check endpoint: `GET /health`
-  - ✅ Database initialization on startup
-  - ✅ Graceful shutdown handlers
-  - ✅ Exception handlers for common errors
+  -  FastAPI app initialization
+  -  CORS middleware (allow frontend origin)
+  -  Health check endpoint: `GET /health`
+  -  Database initialization on startup
+  -  Graceful shutdown handlers
+  -  Exception handlers for common errors
 
 **Acceptance Criteria:**
-- ✅ `uvicorn backend.main:app --reload` starts server on http://localhost:8000 - **PASSED**
-- ✅ `GET /health` returns `{"status": "healthy"}` - **PASSED**
-- ✅ No import errors or missing dependencies - **PASSED**
+-  `uvicorn backend.main:app --reload` starts server on http://localhost:8000 - **PASSED**
+-  `GET /health` returns `{"status": "healthy"}` - **PASSED**
+-  No import errors or missing dependencies - **PASSED**
 
 **Test Results:** 4/4 tests passing (app_initialization, root_endpoint, health_check_endpoint, openapi_docs)
 
 ---
 
-### Task 1.2: Database Schema & Models ✅ **COMPLETE**
+### Task 1.2: Database Schema & Models  **COMPLETE**
 **Priority:** P0 (Critical)
 **Estimated Time:** 3 hours
 **Owner:** Backend Team
-**Status:** ✅ COMPLETE - All acceptance criteria met
+**Status:**  COMPLETE - All acceptance criteria met
 
 #### Sub-tasks:
 - [x] **1.2.1** Create `backend/database.py`:
@@ -214,21 +214,21 @@ CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interac
   - Add sample data seeding for testing (optional)
 
 **Acceptance Criteria:**
-- ✅ Running `python backend/init_db.py` creates `cortex.db` with all tables - **PASSED**
-- ✅ SQLAlchemy models have proper relationships - **PASSED**
-- ✅ Pydantic schemas validate data correctly - **PASSED**
+-  Running `python backend/init_db.py` creates `cortex.db` with all tables - **PASSED**
+-  SQLAlchemy models have proper relationships - **PASSED**
+-  Pydantic schemas validate data correctly - **PASSED**
 
 **Test Results:** Database connection tests passing, all models and relationships working correctly
 
 ---
 
-## PHASE 2: Chat Ingestion Pipeline ✅ **COMPLETE**
+## PHASE 2: Chat Ingestion Pipeline  **COMPLETE**
 
-### Task 2.1: HTML Parser Implementation ✅ **COMPLETE**
+### Task 2.1: HTML Parser Implementation  **COMPLETE**
 **Priority:** P0 (Critical)
 **Estimated Time:** 4 hours
 **Owner:** Backend Team
-**Status:** ✅ COMPLETE - All acceptance criteria met
+**Status:**  COMPLETE - All acceptance criteria met
 
 #### Sub-tasks:
 - [x] **2.1.1** Research chat export formats:
@@ -260,10 +260,10 @@ CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interac
   - Test edge cases (empty conversations, special characters)
 
 **Acceptance Criteria:**
-- ✅ Parser correctly extracts 100% of messages from sample HTML - **PASSED** (16/16 messages from 570KB file)
-- ✅ Roles are properly identified (user vs assistant) - **PASSED**
-- ✅ Formatting is preserved or cleaned appropriately - **PASSED**
-- ✅ All unit tests pass - **PASSED** (18/18 parser tests)
+-  Parser correctly extracts 100% of messages from sample HTML - **PASSED** (16/16 messages from 570KB file)
+-  Roles are properly identified (user vs assistant) - **PASSED**
+-  Formatting is preserved or cleaned appropriately - **PASSED**
+-  All unit tests pass - **PASSED** (18/18 parser tests)
 
 **Test Results:** 18/18 parser tests passing + real 570KB ChatGPT export file successfully parsed
 
@@ -315,10 +315,10 @@ CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interac
   - Assign colors based on cluster (map to frontend color scheme)
 
 **Acceptance Criteria:**
-- ✅ Normalized conversation has valid title, topics, summary - **PASSED**
-- ✅ Embeddings are generated via OpenAI and stored as float arrays - **PASSED**
-- ✅ 3D coordinates are properly scaled and distributed - **PASSED**
-- ✅ Clusters are visually distinct in 3D space - **PASSED**
+-  Normalized conversation has valid title, topics, summary - **PASSED**
+-  Embeddings are generated via OpenAI and stored as float arrays - **PASSED**
+-  3D coordinates are properly scaled and distributed - **PASSED**
+-  Clusters are visually distinct in 3D space - **PASSED**
 
 **Test Results:** 19/19 service tests passing (normalizer, summarizer, embedder, dimensionality_reducer, clusterer)
 
@@ -328,7 +328,7 @@ CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interac
 **Priority:** P0 (Critical)
 **Estimated Time:** 4 hours
 **Owner:** Backend Team
-**Status:** ✅ **COMPLETE**
+**Status:**  **COMPLETE**
 
 #### Sub-tasks:
 - [x] **2.3.1** Implement `POST /api/ingest` in `backend/api/ingest.py`:
@@ -364,10 +364,10 @@ CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interac
   - Return detailed error messages
 
 **Acceptance Criteria:**
-- ✅ Successfully ingest sample ChatGPT HTML file - **PASSED** (570KB real file tested)
-- ✅ Conversation appears in database with all fields populated - **PASSED**
-- ✅ 3D coordinates are generated and stored - **PASSED** (via UMAP reduction)
-- ✅ Error cases return appropriate HTTP status codes - **PASSED** (400, 422, 500)
+-  Successfully ingest sample ChatGPT HTML file - **PASSED** (570KB real file tested)
+-  Conversation appears in database with all fields populated - **PASSED**
+-  3D coordinates are generated and stored - **PASSED** (via UMAP reduction)
+-  Error cases return appropriate HTTP status codes - **PASSED** (400, 422, 500)
 
 **Test Results:**
 - 16/16 tests passing for Task 2.3 (test_task_2_3.py)
@@ -384,11 +384,11 @@ CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interac
 
 ## 📊 PHASE 1-2 COMPLETION SUMMARY
 
-**Status:** ✅ **100% COMPLETE** - All tasks implemented and tested
+**Status:**  **100% COMPLETE** - All tasks implemented and tested
 
 ### What's Been Accomplished
 
-#### Phase 1: Backend Infrastructure ✅
+#### Phase 1: Backend Infrastructure 
 - **FastAPI Application** ([backend/main.py](backend/main.py) - 169 lines)
   - Async lifespan management with database initialization
   - CORS middleware configured for frontend integration
@@ -405,7 +405,7 @@ CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interac
   - Pydantic models for all request/response validation
   - Complete type safety for all API endpoints
 
-#### Phase 2: Chat Ingestion Pipeline ✅
+#### Phase 2: Chat Ingestion Pipeline 
 - **HTML Parsers** ([backend/parsers/](backend/parsers/))
   - ChatGPT parser (488 lines) - Handles official ChatGPT HTML exports
   - Claude parser (297 lines) - Handles Claude conversation exports
@@ -470,16 +470,16 @@ CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interac
    - Real ChatGPT export validation
 
 ### Key Features Implemented
-✅ Multi-format HTML parsing (ChatGPT, Claude)
-✅ OpenAI embeddings generation (384D vectors)
-✅ UMAP dimensionality reduction (384D → 3D)
-✅ K-means clustering with semantic naming
-✅ Batch ingestion with auto-reprocessing
-✅ Complete re-clustering pipeline
-✅ Comprehensive error handling
-✅ Full test coverage with real data validation
-✅ Database persistence with proper relationships
-✅ RESTful API design with Pydantic validation
+ Multi-format HTML parsing (ChatGPT, Claude)
+ OpenAI embeddings generation (384D vectors)
+ UMAP dimensionality reduction (384D → 3D)
+ K-means clustering with semantic naming
+ Batch ingestion with auto-reprocessing
+ Complete re-clustering pipeline
+ Comprehensive error handling
+ Full test coverage with real data validation
+ Database persistence with proper relationships
+ RESTful API design with Pydantic validation
 
 ### Ready for Phase 3
 The foundation is solid and ready for:
@@ -491,13 +491,13 @@ The foundation is solid and ready for:
 ---
 
 ## PHASE 3: Hybrid Search System
-**Status:** ✅ **COMPLETE** - All tasks complete (100%)
+**Status:**  **COMPLETE** - All tasks complete (100%)
 
 ### Task 3.1: OpenAI Vector Store Setup & Indexing
 **Priority:** P0 (Critical)
 **Estimated Time:** 3 hours
 **Owner:** Backend Team
-**Status:** ✅ **COMPLETE**
+**Status:**  **COMPLETE**
 
 #### Sub-tasks:
 - [x] **3.1.1** Implement `backend/services/openai_vector_store.py`:
@@ -518,9 +518,9 @@ The foundation is solid and ready for:
   - Implemented configurable score_threshold and rewrite_query options
 
 **Acceptance Criteria:**
-- ✅ Newly ingested conversations are searchable via the vector store - **PASSED**
-- ✅ Vector store file ingestion reaches `completed` state - **PASSED**
-- ✅ Each vector-store result can be mapped back to a `conversation_id` - **PASSED**
+-  Newly ingested conversations are searchable via the vector store - **PASSED**
+-  Vector store file ingestion reaches `completed` state - **PASSED**
+-  Each vector-store result can be mapped back to a `conversation_id` - **PASSED**
 
 **Test Results:** 5/5 vector store setup tests passing
 - VectorStoreService initialization with config persistence
@@ -546,7 +546,7 @@ The foundation is solid and ready for:
 **Priority:** P0 (Critical)
 **Estimated Time:** 3 hours
 **Owner:** Backend Team
-**Status:** ✅ **COMPLETE**
+**Status:**  **COMPLETE**
 
 #### Sub-tasks:
 - [x] **3.2.1** Implement vector store search call:
@@ -565,8 +565,8 @@ The foundation is solid and ready for:
   - Query rewriting enabled by default for better semantic matching
 
 **Acceptance Criteria:**
-- ✅ Search returns relevant chunks for both keyword-style and semantic queries - **PASSED**
-- ✅ Results include per-chunk scores and content - **PASSED**
+-  Search returns relevant chunks for both keyword-style and semantic queries - **PASSED**
+-  Results include per-chunk scores and content - **PASSED**
 
 **Test Results:** 6/6 vector store search tests passing
 - Vector store search with query rewriting
@@ -593,7 +593,7 @@ The foundation is solid and ready for:
 **Priority:** P0 (Critical)
 **Estimated Time:** 2 hours
 **Owner:** Backend Team
-**Status:** ✅ **COMPLETE**
+**Status:**  **COMPLETE**
 
 #### Sub-tasks:
 - [x] **3.3.1** Add evaluation queries + golden set:
@@ -614,8 +614,8 @@ The foundation is solid and ready for:
   - Implemented in search API with deduplication by file_id
 
 **Acceptance Criteria:**
-- ✅ Retrieval is consistently relevant across keyword and semantic queries - **PASSED**
-- ✅ Conversation-level results are stable and deduplicated - **PASSED**
+-  Retrieval is consistently relevant across keyword and semantic queries - **PASSED**
+-  Conversation-level results are stable and deduplicated - **PASSED**
 
 **Test Results:** 7/7 evaluation tests passing
 - Golden dataset ingestion (5 conversations with known topics)
@@ -639,7 +639,7 @@ The foundation is solid and ready for:
 **Priority:** P0 (Critical)
 **Estimated Time:** 2 hours
 **Owner:** Backend Team
-**Status:** ✅ **COMPLETE**
+**Status:**  **COMPLETE**
 
 #### Sub-tasks:
 - [x] **3.4.1** Implement `POST /api/search` in `backend/api/search.py`:
@@ -648,31 +648,31 @@ The foundation is solid and ready for:
   - Map vector store chunks → `conversation_id` via file `attributes` and/or stored mapping
   - Fetch conversation metadata from SQLite
   - Return conversation-level results with:
-    - Conversation ID, title, summary, topics ✅
-    - 3D coordinates (start_x, end_x, etc.) ✅
-    - Search score (aggregated from chunk scores) ✅
-    - Top matching snippets (message_preview) ✅
+    - Conversation ID, title, summary, topics 
+    - 3D coordinates (start_x, end_x, etc.) 
+    - Search score (aggregated from chunk scores) 
+    - Top matching snippets (message_preview) 
 
 - [x] **3.4.2** Implement `GET /api/chats`:
-  - Return all conversations with metadata ✅
-  - Paginate results (default 100 per page) ✅
-  - Include 3D coordinates and cluster info ✅
+  - Return all conversations with metadata 
+  - Paginate results (default 100 per page) 
+  - Include 3D coordinates and cluster info 
   - Already implemented in [backend/api/chats.py](backend/api/chats.py)
 
 - [x] **3.4.3** Implement `GET /api/chats/{conversation_id}`:
-  - Return full conversation details ✅
-  - Include all messages ✅
-  - Include embedding metadata ✅
+  - Return full conversation details 
+  - Include all messages 
+  - Include embedding metadata 
   - Already implemented in [backend/api/chats.py](backend/api/chats.py)
 
 - [x] **3.4.4** Add caching headers:
-  - Cache conversation list for 60 seconds ✅ (`Cache-Control: public, max-age=60`)
-  - Cache individual conversations for 5 minutes ✅ (`Cache-Control: public, max-age=300`)
+  - Cache conversation list for 60 seconds  (`Cache-Control: public, max-age=60`)
+  - Cache individual conversations for 5 minutes  (`Cache-Control: public, max-age=300`)
 
 **Acceptance Criteria:**
-- ✅ All endpoints return valid JSON - **PASSED**
-- ✅ Search endpoint returns relevant results - **PASSED**
-- ✅ Response times are acceptable (<200ms) - **PASSED** (typically <50ms without real API calls)
+-  All endpoints return valid JSON - **PASSED**
+-  Search endpoint returns relevant results - **PASSED**
+-  Response times are acceptable (<200ms) - **PASSED** (typically <50ms without real API calls)
 
 **Test Results:**
 - 6/6 E2E integration tests (with API key validation)
@@ -727,9 +727,9 @@ The foundation is solid and ready for:
   - Disable interactions while loading
 
 **Acceptance Criteria:**
-- ✅ API client successfully calls backend endpoints
-- ✅ Errors are caught and displayed to user
-- ✅ Loading states prevent user confusion
+-  API client successfully calls backend endpoints
+-  Errors are caught and displayed to user
+-  Loading states prevent user confusion
 
 ---
 
@@ -768,11 +768,11 @@ The foundation is solid and ready for:
   - Log errors to console for debugging
 
 **Acceptance Criteria:**
-- ✅ 3D visualization renders with backend data (no fake data)
-- ✅ Points are positioned using backend-generated 3D coordinates
-- ✅ Search uses backend hybrid retrieval (OpenAI Vector Store)
-- ✅ Panel displays real conversation content
-- ✅ Errors are handled gracefully
+-  3D visualization renders with backend data (no fake data)
+-  Points are positioned using backend-generated 3D coordinates
+-  Search uses backend hybrid retrieval (OpenAI Vector Store)
+-  Panel displays real conversation content
+-  Errors are handled gracefully
 
 ---
 
@@ -806,10 +806,10 @@ The foundation is solid and ready for:
   - Clear upload state on close
 
 **Acceptance Criteria:**
-- ✅ Users can upload HTML files via drag-drop or file picker
-- ✅ Upload progress is visible
-- ✅ New chats appear in 3D scene after upload (automatic refresh)
-- ✅ Error messages are clear and actionable
+-  Users can upload HTML files via drag-drop or file picker
+-  Upload progress is visible
+-  New chats appear in 3D scene after upload (automatic refresh)
+-  Error messages are clear and actionable
 
 ---
 
@@ -840,9 +840,9 @@ The foundation is solid and ready for:
   - Update after upload
 
 **Acceptance Criteria:**
-- ✅ UI feels polished and professional
-- ✅ All states (loading, error, empty, success) are handled
-- ✅ Visual feedback for all user actions
+-  UI feels polished and professional
+-  All states (loading, error, empty, success) are handled
+-  Visual feedback for all user actions
 
 ---
 
@@ -852,33 +852,33 @@ The foundation is solid and ready for:
 **Priority:** P1 (High)
 **Estimated Time:** 3 hours
 **Owner:** MCP Team
-**Status:** ✅ **COMPLETE**
+**Status:**  **COMPLETE**
 
 #### Sub-tasks:
 - [x] **5.1.1** Install MCP SDK:
-  - Add to requirements: `mcp>=1.0.0` ✅
-  - Installed and configured successfully ✅
+  - Add to requirements: `mcp>=1.0.0` 
+  - Installed and configured successfully 
 
 - [x] **5.1.2** Implement `cortex_mcp/server.py`:
-  - Set up MCP server with stdio transport ✅
-  - Define server metadata (name: cortex-memory, version: 1.0.0) ✅
-  - Register tools: `search_memory`, `fetch_chat` ✅
-  - Handle tool execution requests ✅
-  - Handle initialization/shutdown ✅
+  - Set up MCP server with stdio transport 
+  - Define server metadata (name: cortex-memory, version: 1.0.0) 
+  - Register tools: `search_memory`, `fetch_chat` 
+  - Handle tool execution requests 
+  - Handle initialization/shutdown 
 
 - [x] **5.1.3** Create `cortex_mcp/config.py`:
-  - Backend API URL configuration ✅
-  - MCP server settings ✅
-  - Logging configuration ✅
+  - Backend API URL configuration 
+  - MCP server settings 
+  - Logging configuration 
 
 - [x] **5.1.4** Add error handling:
-  - Catch and return MCP error responses ✅
-  - Log all tool invocations for debugging ✅
+  - Catch and return MCP error responses 
+  - Log all tool invocations for debugging 
 
 **Acceptance Criteria:**
-- ✅ MCP server starts without errors
-- ✅ Server responds to initialization requests
-- ✅ Protocol compliance with Anthropic MCP spec
+-  MCP server starts without errors
+-  Server responds to initialization requests
+-  Protocol compliance with Anthropic MCP spec
 
 **Implementation Details:**
 - [backend/cortex_mcp/server.py](backend/cortex_mcp/server.py) - MCP server implementation with stdio transport
@@ -892,29 +892,29 @@ The foundation is solid and ready for:
 **Priority:** P1 (High)
 **Estimated Time:** 2 hours
 **Owner:** MCP Team
-**Status:** ✅ **COMPLETE**
+**Status:**  **COMPLETE**
 
 #### Sub-tasks:
 - [x] **5.2.1** Implement `search_memory` tool in `cortex_mcp/server.py`:
-  - Tool name: `search_memory` ✅
-  - Tool description: "Search past AI chat conversations using OpenAI Vector Store (hybrid semantic + keyword retrieval)" ✅
-  - Input schema with query and limit parameters ✅
+  - Tool name: `search_memory` 
+  - Tool description: "Search past AI chat conversations using OpenAI Vector Store (hybrid semantic + keyword retrieval)" 
+  - Input schema with query and limit parameters 
   - Implementation:
-    - Calls backend `POST /api/search` endpoint ✅
-    - Formats results for LLM consumption ✅
-    - Includes: title, summary, topics, message preview, cluster info ✅
+    - Calls backend `POST /api/search` endpoint 
+    - Formats results for LLM consumption 
+    - Includes: title, summary, topics, message preview, cluster info 
 
 - [x] **5.2.2** Add result formatting:
-  - Returns structured text optimized for LLM reading ✅
-  - Includes conversation metadata (ID, title, topics, cluster, message count) ✅
-  - Truncates long content (previews limited to 300 chars) ✅
-  - Shows relevance scores and search time ✅
-  - Handles empty results with helpful message ✅
+  - Returns structured text optimized for LLM reading 
+  - Includes conversation metadata (ID, title, topics, cluster, message count) 
+  - Truncates long content (previews limited to 300 chars) 
+  - Shows relevance scores and search time 
+  - Handles empty results with helpful message 
 
 **Acceptance Criteria:**
-- ✅ Tool successfully calls backend search API
-- ✅ Returns relevant results formatted for LLM
-- ✅ Handles empty results gracefully
+-  Tool successfully calls backend search API
+-  Returns relevant results formatted for LLM
+-  Handles empty results gracefully
 
 **Implementation Details:**
 - Enhanced [backend/cortex_mcp/server.py:65-113](backend/cortex_mcp/server.py#L65-L113) with rich result formatting
@@ -952,9 +952,9 @@ The foundation is solid and ready for:
   - Include message timestamps
 
 **Acceptance Criteria:**
-- ✅ Tool retrieves full conversation details
-- ✅ All messages are included and properly formatted
-- ✅ LLM can easily parse and understand the content
+-  Tool retrieves full conversation details
+-  All messages are included and properly formatted
+-  LLM can easily parse and understand the content
 
 ---
 
@@ -989,9 +989,9 @@ The foundation is solid and ready for:
   - Add troubleshooting guide
 
 **Acceptance Criteria:**
-- ✅ Both tools work correctly with test client
-- ✅ Claude Desktop can discover and use tools
-- ✅ End-to-end context injection works
+-  Both tools work correctly with test client
+-  Claude Desktop can discover and use tools
+-  End-to-end context injection works
 
 ---
 
@@ -1023,9 +1023,9 @@ The foundation is solid and ready for:
   - Measure response times
 
 **Acceptance Criteria:**
-- ✅ 80%+ code coverage
-- ✅ All tests pass
-- ✅ Performance meets targets (<200ms for search)
+-  80%+ code coverage
+-  All tests pass
+-  Performance meets targets (<200ms for search)
 
 ---
 
@@ -1057,9 +1057,9 @@ The foundation is solid and ready for:
   - Log any bugs found
 
 **Acceptance Criteria:**
-- ✅ All critical user flows work end-to-end
-- ✅ No blocking bugs remain
-- ✅ System works across browsers
+-  All critical user flows work end-to-end
+-  No blocking bugs remain
+-  System works across browsers
 
 ---
 
@@ -1099,9 +1099,9 @@ The foundation is solid and ready for:
   - Add inline comments for clarity
 
 **Acceptance Criteria:**
-- ✅ New user can set up project from README alone
-- ✅ All features are documented
-- ✅ Code is well-commented
+-  New user can set up project from README alone
+-  All features are documented
+-  Code is well-commented
 
 ---
 
@@ -1133,9 +1133,9 @@ The foundation is solid and ready for:
   - Ready for immediate demo
 
 **Acceptance Criteria:**
-- ✅ Single command starts entire system
-- ✅ Demo data is impressive and diverse
-- ✅ System runs stably for extended periods
+-  Single command starts entire system
+-  Demo data is impressive and diverse
+-  System runs stably for extended periods
 
 ---
 
@@ -1174,10 +1174,10 @@ The foundation is solid and ready for:
   - Offline demo with sample data
 
 **Acceptance Criteria:**
-- ✅ Demo flows smoothly and impressively
-- ✅ All key features are showcased
-- ✅ Team is prepared for questions
-- ✅ Backup materials are ready
+-  Demo flows smoothly and impressively
+-  All key features are showcased
+-  Team is prepared for questions
+-  Backup materials are ready
 
 ---
 
@@ -1211,21 +1211,21 @@ The foundation is solid and ready for:
 - **Day 3-4:** Chat ingestion pipeline (Tasks 2.1, 2.2)
 - **Day 5-7:** Ingest API + vector/keyword search (Tasks 2.3, 3.1, 3.2)
 
-**Milestone 1:** Can ingest HTML files and generate embeddings ✅
+**Milestone 1:** Can ingest HTML files and generate embeddings 
 
 ### Week 2: Integration (Feb 10-16)
 - **Day 1-2:** Hybrid search + search API (Tasks 3.3, 3.4)
 - **Day 3-4:** Frontend API integration (Tasks 4.1, 4.2)
 - **Day 5-7:** File upload UI + MCP server (Tasks 4.3, 5.1, 5.2, 5.3)
 
-**Milestone 2:** Full end-to-end system functional ✅
+**Milestone 2:** Full end-to-end system functional 
 
 ### Week 3: Polish & Launch (Feb 17-23)
 - **Day 1-3:** Testing and bug fixes (Tasks 6.1, 6.2)
 - **Day 4-5:** Documentation and deployment prep (Tasks 7.1, 7.2)
 - **Day 6-7:** Demo preparation and rehearsal (Task 7.3)
 
-**Milestone 3:** Hackathon-ready demo ✅
+**Milestone 3:** Hackathon-ready demo 
 
 ---
 
@@ -1293,17 +1293,17 @@ All → Backend must be completed first
 ## 8. Out of Scope (For Hackathon)
 
 ### Explicitly NOT Included:
-- ❌ User authentication/accounts
-- ❌ Multi-user support
-- ❌ Real-time collaboration
-- ❌ Production deployment (AWS/GCP/Azure)
-- ❌ Conversation editing/deletion UI
-- ❌ Export conversations back to HTML
-- ❌ Mobile app
-- ❌ Browser extension for auto-export
-- ❌ Integration with live ChatGPT/Claude APIs for auto-import
-- ❌ Advanced analytics/dashboards
-- ❌ Fine-tuned embedding models
+-  User authentication/accounts
+-  Multi-user support
+-  Real-time collaboration
+-  Production deployment (AWS/GCP/Azure)
+-  Conversation editing/deletion UI
+-  Export conversations back to HTML
+-  Mobile app
+-  Browser extension for auto-export
+-  Integration with live ChatGPT/Claude APIs for auto-import
+-  Advanced analytics/dashboards
+-  Fine-tuned embedding models
 
 ### Future Roadmap (Post-Hackathon):
 1. **Phase 1:** User accounts + cloud deployment
@@ -1558,7 +1558,7 @@ The frontend currently generates fake data but expects this structure from `GET 
 **Tech Lead:** [Name]  
 **Date:** February 3, 2026
 
-**Status:** ✅ APPROVED - Ready for Implementation
+**Status:**  APPROVED - Ready for Implementation
 
 ---
 

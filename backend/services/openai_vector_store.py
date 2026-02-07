@@ -45,7 +45,7 @@ class VectorStoreService:
         env_store_id = os.getenv("OPENAI_VECTOR_STORE_ID")
         if env_store_id and env_store_id.strip():
             self.vector_store_id = env_store_id.strip()
-            print(f"✅ Using vector store from env: {self.vector_store_id}")
+            print(f" Using vector store from env: {self.vector_store_id}")
             return
 
         # Check local config file
@@ -55,7 +55,7 @@ class VectorStoreService:
                     config = json.load(f)
                     self.vector_store_id = config.get("vector_store_id")
                     if self.vector_store_id:
-                        print(f"✅ Using vector store from config: {self.vector_store_id}")
+                        print(f" Using vector store from config: {self.vector_store_id}")
                         return
             except Exception as e:
                 print(f"Warning: Failed to load config file: {e}")
@@ -81,7 +81,7 @@ class VectorStoreService:
                     "created_at": time.time()
                 }, f, indent=2)
 
-            print(f"✅ Created new vector store: {self.vector_store_id}")
+            print(f" Created new vector store: {self.vector_store_id}")
             print(f"   Saved to: {self.config_file}")
 
         except Exception as e:
@@ -207,10 +207,10 @@ class VectorStoreService:
                 status = vector_store_file.status
 
                 if status == "completed":
-                    print(f"✅ File {file_id} ingestion completed")
+                    print(f" File {file_id} ingestion completed")
                     return "completed"
                 elif status == "failed":
-                    print(f"❌ File {file_id} ingestion failed")
+                    print(f" File {file_id} ingestion failed")
                     return "failed"
                 elif status in ["in_progress", "pending"]:
                     print(f"⏳ File {file_id} status: {status} (attempt {attempt + 1}/{max_attempts})")
@@ -223,7 +223,7 @@ class VectorStoreService:
                 print(f"Error polling file status: {e}")
                 time.sleep(poll_interval)
 
-        print(f"⚠️ File {file_id} ingestion timed out after {max_attempts} attempts")
+        print(f" File {file_id} ingestion timed out after {max_attempts} attempts")
         return "timeout"
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
@@ -311,7 +311,7 @@ class VectorStoreService:
             # Delete the file itself
             self.client.files.delete(file_id=file_id)
 
-            print(f"✅ Deleted file {file_id} from vector store")
+            print(f" Deleted file {file_id} from vector store")
             return True
 
         except Exception as e:

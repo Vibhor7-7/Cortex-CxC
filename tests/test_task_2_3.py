@@ -9,10 +9,10 @@ Tests all subtasks and acceptance criteria from PRD.md:
 - 2.3.5: Error handling
 
 Acceptance Criteria:
-✅ Successfully ingest sample ChatGPT HTML file
-✅ Conversation appears in database with all fields populated
-✅ 3D coordinates are generated and stored
-✅ Error cases return appropriate HTTP status codes
+ Successfully ingest sample ChatGPT HTML file
+ Conversation appears in database with all fields populated
+ 3D coordinates are generated and stored
+ Error cases return appropriate HTTP status codes
 """
 
 import unittest
