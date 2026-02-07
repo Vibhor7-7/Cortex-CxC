@@ -16,9 +16,9 @@ from backend.parsers import parse_html, detect_format
 from backend.services.normalizer import normalize_conversation
 from backend.services.summarizer import summarize_conversation
 from backend.services.embedder import generate_embedding, prepare_text_for_embedding
-from backend.services.dimensionality_reducer import reduce_embeddings, normalize_coordinates
+from backend.services.dimensionality_reducer import fit_umap_model, reduce_embeddings, normalize_coordinates
 from backend.services.clusterer import cluster_conversations
-from backend.services.openai_vector_store import upload_conversation_to_vector_store
+from backend.services.vector_store import upsert_conversation_to_store
 import uuid
 
 
@@ -171,36 +171,24 @@ async def ingest_single_chat(
 
             db.commit()
 
-        # Upload conversation to OpenAI Vector Store
+        # Upsert conversation into local vector store
         try:
-            print(f"Uploading conversation {conversation_id} to vector store...")
+            print(f"Upserting conversation {conversation_id} into vector store...")
             conversation_data = {
                 'title': normalized['title'],
                 'summary': summary,
                 'topics': topics,
                 'messages': normalized['messages']
             }
-            file_id, status = await upload_conversation_to_vector_store(
+            await upsert_conversation_to_store(
                 conversation_id=conversation_id,
                 conversation_data=conversation_data,
-                poll_completion=True
+                embedding=embedding_vector,
             )
-
-            # Update conversation with file_id
-            if file_id and status == "completed":
-                with get_db_context() as db:
-                    conversation = db.query(Conversation).filter(
-                        Conversation.id == conversation_id
-                    ).first()
-                    if conversation:
-                        conversation.openai_file_id = file_id
-                        db.commit()
-                print(f" Conversation uploaded to vector store: {file_id}")
-            else:
-                print(f" Vector store upload status: {status}")
+            print(f"✅ Conversation indexed in vector store: {conversation_id}")
         except Exception as e:
-            # Don't fail ingestion if vector store upload fails
-            print(f"Warning: Vector store upload failed: {e}")
+            # Don't fail ingestion if vector store upsert fails
+            print(f"Warning: Vector store upsert failed: {e}")
 
         # Trigger automatic reprocessing if requested
         if auto_reprocess:
@@ -309,7 +297,7 @@ async def reprocess_all_conversations():
 
     This endpoint should be called after ingesting new conversations to:
     1. Load all conversation embeddings from database
-    2. Run UMAP dimensionality reduction (384D → 3D)
+    2. Run UMAP dimensionality reduction (768D → 3D)
     3. Run K-means clustering
     4. Update database with new 3D coordinates and cluster assignments
 
@@ -341,12 +329,14 @@ async def reprocess_all_conversations():
 
             # 2. Run UMAP dimensionality reduction
             print(f"Running UMAP on {len(embedding_vectors)} conversations...")
+            # Fit a UMAP model, then reduce
+            umap_model = fit_umap_model(
+                embedding_vectors,
+                save_model=True
+            )
             reduced_data = reduce_embeddings(
                 embedding_vectors,
-                n_components=3,
-                n_neighbors=min(15, len(embedding_vectors) - 1),
-                min_dist=0.1,
-                save_model=True
+                model=umap_model
             )
 
             # Normalize coordinates for better visualization

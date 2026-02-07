@@ -1,0 +1,65 @@
+{
+  "file_ids": [
+    "file_a",
+    "file_b",
+    "file_c",
+    "file_conv_threshold",
+    "file_conv_search_test"
+  ],
+  "file_metadata": {
+    "file_test_threshold_conv": {
+      "conversation_id": "test_threshold_conv",
+      "content": "# Test\n\n**Summary:** Test\n\n**Topics:** Test\n\n\n---\n",
+      "title": "Test",
+      "topics": [
+        "Test"
+      ]
+    },
+    "file_conv_persist": {
+      "conversation_id": "conv_persist",
+      "content": "# Persist Test\n\n**Summary:** Test persistence\n\n\n---\n",
+      "title": "Persist Test",
+      "topics": []
+    },
+    "file_conv_123": {
+      "conversation_id": "conv_123",
+      "content": "# Test\n\n**Summary:** Test summary\n\n**Topics:** Test\n\n\n---\n\n\n## USER\n\nTest message\n",
+      "title": "Test",
+      "topics": [
+        "Test"
+      ]
+    },
+    "file_conv_no_embed": {
+      "conversation_id": "conv_no_embed",
+      "content": "# No Embedding Test\n\n**Summary:** Test without embedding\n\n**Topics:** Test\n\n\n---\n\n\n## USER\n\nNo embedding\n",
+      "title": "No Embedding Test",
+      "topics": [
+        "Test"
+      ]
+    },
+    "file_conv_keyword": {
+      "conversation_id": "conv_keyword",
+      "content": "# Python Data Types\n\n**Summary:** Discussion about Python data types\n\n**Topics:** Python\n\n\n---\n\n\n## USER\n\nWhat are Python data types?\n",
+      "title": "Python Data Types",
+      "topics": [
+        "Python"
+      ]
+    },
+    "file_conv_threshold": {
+      "conversation_id": "conv_threshold",
+      "content": "# Threshold Test\n\n**Summary:** Testing score thresholds\n\n**Topics:** Test\n\n\n---\n\n\n## USER\n\nTest\n",
+      "title": "Threshold Test",
+      "topics": [
+        "Test"
+      ]
+    },
+    "file_conv_search_test": {
+      "conversation_id": "conv_search_test",
+      "content": "# Python Programming\n\n**Summary:** A conversation about Python\n\n**Topics:** Python\n\n\n---\n\n\n## USER\n\nTell me about Python\n",
+      "title": "Python Programming",
+      "topics": [
+        "Python"
+      ]
+    }
+  }
+}

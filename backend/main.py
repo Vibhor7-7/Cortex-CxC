@@ -47,11 +47,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"  Database initialization error: {e}")
     
-    # Verify OpenAI API key is configured
-    if not os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY") == "your_openai_api_key_here":
-        print("  Warning: OPENAI_API_KEY not configured in .env file")
-    else:
-        print(" OpenAI API key configured")
+    # Verify Ollama is reachable
+    try:
+        import httpx
+        resp = httpx.get(os.getenv("OLLAMA_BASE_URL", "http://localhost:11434") + "/api/tags", timeout=3)
+        model_names = [m["name"] for m in resp.json().get("models", [])]
+        print(f"✅ Ollama connected — models: {', '.join(model_names)}")
+    except Exception:
+        print("⚠️  Warning: Ollama not reachable at localhost:11434 (summarization & embeddings will fail)")
     
     print("CORTEX backend ready!")
     
@@ -118,21 +121,30 @@ async def health_check():
     except Exception:
         pass
     
-    # Check OpenAI configuration
-    openai_configured = bool(
-        os.getenv("OPENAI_API_KEY") and 
-        os.getenv("OPENAI_API_KEY") != "your_openai_api_key_here"
-    )
-    
-    # Check vector store configuration
-    vector_store_configured = bool(os.getenv("OPENAI_VECTOR_STORE_ID"))
+    # Check Ollama connectivity
+    ollama_connected = False
+    try:
+        import httpx
+        resp = httpx.get(os.getenv("OLLAMA_BASE_URL", "http://localhost:11434") + "/api/tags", timeout=2)
+        ollama_connected = resp.status_code == 200
+    except Exception:
+        pass
+
+    # Check vector store
+    vector_store_ready = False
+    try:
+        from backend.services.vector_store import get_vector_store_service
+        svc = get_vector_store_service()
+        vector_store_ready = svc.count() >= 0
+    except Exception:
+        pass
     
     return HealthResponse(
         status="healthy" if database_connected else "degraded",
         version="1.0.0",
         database_connected=database_connected,
-        openai_configured=openai_configured,
-        vector_store_configured=vector_store_configured
+        ollama_connected=ollama_connected,
+        chroma_ready=vector_store_ready,
     )
 
 

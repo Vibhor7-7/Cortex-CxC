@@ -2,57 +2,51 @@
 
 ## Environment Configuration
 
-This project uses environment variables for configuration. Follow these steps:
+This project runs fully locally using Ollama + a numpy-based vector store. No API keys required.
 
 ### For New Contributors:
 
-1. **Copy the example environment file:**
+1. **Install Ollama:**
+   - Visit https://ollama.com and download for your OS
+   - Verify: `ollama --version`
+
+2. **Pull required models:**
+   ```bash
+   ollama pull qwen2.5
+   ollama pull nomic-embed-text
+   ```
+
+3. **Start Ollama server:**
+   ```bash
+   ollama serve
+   ```
+
+4. **Copy the example environment file:**
    ```bash
    cd backend
    cp .env.example .env
    ```
 
-2. **Edit `.env` and add your API keys:**
+5. **Verify your setup:**
    ```bash
-   # On macOS/Linux
-   nano .env
-   # or
-   code .env
-   ```
-
-3. **Get your OpenAI API key:**
-   - Visit https://platform.openai.com/api-keys
-   - Create a new API key
-   - Paste it into `.env` replacing `your_openai_api_key_here`
-
-4. **Verify your setup:**
-   ```bash
-   # Show hidden files to see .env (macOS Finder)
-   # Press: Cmd + Shift + .
-
-   # Or list in terminal
-   ls -la
+   # Check Ollama is running
+   curl http://localhost:11434/api/tags
    ```
 
 ### Security Notes
 
--  `.env` is already in `.gitignore` - it will NOT be committed
--  Each contributor maintains their own local `.env` file
--  Never share your `.env` file or commit it to version control
--  Use `.env.example` as the template (this IS committed)
+- ✅ `.env` is already in `.gitignore` - it will NOT be committed
+- ✅ No API keys needed — all inference runs locally via Ollama
+- ✅ Vector store persisted locally in `.vector_store.json`
 
 ### Troubleshooting
 
-**Can't see `.env` file?**
-- Files starting with `.` are hidden by default on macOS/Linux
-- In Finder: Press `Cmd + Shift + .` to show hidden files
-- In terminal: Use `ls -la` instead of `ls`
+**Ollama not responding?**
+- Make sure `ollama serve` is running in a terminal
+- Check it’s on port 11434: `curl http://localhost:11434/api/tags`
+
+**Models missing?**
+- Run: `ollama pull qwen2.5 && ollama pull nomic-embed-text`
 
 **`.env` file doesn't exist?**
 - Run `cp .env.example .env` from the `backend/` directory
-- The file should be created at `backend/.env`
-
-**API key not working?**
-- Verify you copied the entire key (starts with `sk-proj-`)
-- Check for extra spaces or newlines
-- Generate a new key at https://platform.openai.com/api-keys

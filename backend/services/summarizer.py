@@ -1,11 +1,12 @@
 """
-LLM-based conversation summarization service using OpenAI GPT-4o-mini.
+LLM-based conversation summarization service using local Qwen 2.5 via Ollama.
 
 This module handles:
 - Generating 2-3 sentence summaries of conversations
 - Extracting 3-5 main topics from conversations
 - Caching summaries to avoid regeneration
 - Retry logic with exponential backoff
+- Communicates with Ollama HTTP API (http://localhost:11434)
 """
 
 import os
@@ -14,7 +15,7 @@ import hashlib
 from typing import Dict, List, Any, Tuple
 from pathlib import Path
 
-from openai import AsyncOpenAI
+import httpx
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -23,18 +24,9 @@ from tenacity import (
 )
 
 
-# Initialize OpenAI client (lazily to allow tests without API key)
-_client = None
-
-def get_client():
-    """Get or initialize the OpenAI client."""
-    global _client
-    if _client is None:
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("OPENAI_API_KEY environment variable not set")
-        _client = AsyncOpenAI(api_key=api_key)
-    return _client
+# Ollama configuration
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5")
 
 # Cache directory for summaries
 CACHE_DIR = Path(__file__).parent.parent.parent / ".cache" / "summaries"
@@ -47,7 +39,7 @@ async def summarize_conversation(
     use_cache: bool = True
 ) -> Tuple[str, List[str]]:
     """
-    Generate a summary and extract topics from a conversation using GPT-4o-mini.
+    Generate a summary and extract topics from a conversation using Qwen 2.5 via Ollama.
     
     Args:
         messages: List of message dictionaries with role and content
@@ -61,7 +53,7 @@ async def summarize_conversation(
     
     Raises:
         ValueError: If messages list is empty
-        openai.APIError: If API call fails after retries
+        httpx.HTTPError: If Ollama API call fails after retries
     """
     if not messages:
         raise ValueError("Cannot summarize: messages list is empty")
@@ -75,8 +67,8 @@ async def summarize_conversation(
     # Format conversation for the LLM
     conversation_text = _format_conversation(messages)
     
-    # Generate summary and topics using GPT-4o-mini
-    summary, topics = await _call_gpt4o_mini(conversation_text)
+    # Generate summary and topics using Qwen 2.5 via Ollama
+    summary, topics = await _call_ollama(conversation_text)
     
     # Cache the result
     if conversation_id:
@@ -91,9 +83,9 @@ async def summarize_conversation(
     retry=retry_if_exception_type(Exception),
     reraise=True
 )
-async def _call_gpt4o_mini(conversation_text: str) -> Tuple[str, List[str]]:
+async def _call_ollama(conversation_text: str) -> Tuple[str, List[str]]:
     """
-    Call GPT-4o-mini API with structured JSON output.
+    Call Qwen 2.5 via Ollama's local HTTP API with structured JSON output.
     
     Args:
         conversation_text: Formatted conversation text
@@ -109,39 +101,53 @@ Your task is to:
 1. Generate a concise 2-3 sentence summary of the conversation
 2. Extract 3-5 main topics or themes discussed
 
-Return your response as JSON with this structure:
+Return your response as JSON with this exact structure:
 {
   "summary": "2-3 sentence summary here",
-  "topics": ["topic1", "topic2", "topic3", "topic4", "topic5"]
+  "topics": ["topic1", "topic2", "topic3"]
 }
 
-Keep topics short (1-3 words each) and specific."""
+Keep topics short (1-3 words each) and specific.
+Return ONLY valid JSON, no other text."""
 
     user_prompt = f"""Analyze this conversation and provide a summary and topics:
 
 {conversation_text}
 
-Remember to return only valid JSON with "summary" and "topics" fields."""
+Return ONLY valid JSON with "summary" and "topics" fields."""
 
     try:
-        response = await get_client().chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.3,
-            max_tokens=500,
-            response_format={"type": "json_object"}
-        )
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(
+                f"{OLLAMA_BASE_URL}/api/chat",
+                json={
+                    "model": OLLAMA_MODEL,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    "format": "json",
+                    "stream": False,
+                    "options": {
+                        "temperature": 0.3,
+                        "num_predict": 500
+                    }
+                }
+            )
+            response.raise_for_status()
         
-        # Parse the JSON response
-        content = response.choices[0].message.content
+        # Parse Ollama response
+        ollama_result = response.json()
+        content = ollama_result.get("message", {}).get("content", "")
+        
+        if not content:
+            raise ValueError("Empty response from Ollama")
+        
         result = json.loads(content)
         
         # Validate response structure
         if "summary" not in result or "topics" not in result:
-            raise ValueError("Invalid response structure from GPT-4o-mini")
+            raise ValueError("Invalid response structure from Qwen 2.5")
         
         summary = result["summary"].strip()
         topics = result["topics"]
@@ -163,9 +169,13 @@ Remember to return only valid JSON with "summary" and "topics" fields."""
         return summary, topics
         
     except json.JSONDecodeError as e:
-        raise ValueError(f"Failed to parse JSON response: {e}")
+        raise ValueError(f"Failed to parse JSON response from Qwen 2.5: {e}")
+    except httpx.HTTPError as e:
+        raise Exception(f"Ollama API call failed (is 'ollama serve' running?): {e}")
     except Exception as e:
-        raise Exception(f"GPT-4o-mini API call failed: {e}")
+        if "Failed to parse" in str(e) or "Ollama API" in str(e):
+            raise
+        raise Exception(f"Qwen 2.5 summarization failed: {e}")
 
 
 def _format_conversation(messages: List[Dict[str, Any]]) -> str:

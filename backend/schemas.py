@@ -80,7 +80,7 @@ class ConversationDetailResponse(ConversationResponse):
 class EmbeddingCreate(BaseModel):
     """Schema for creating an embedding."""
     conversation_id: str
-    embedding_384d: List[float] = Field(..., min_length=384, max_length=384)
+    embedding_384d: List[float] = Field(..., min_length=768, max_length=768)
     vector_3d: List[float] = Field(..., min_length=3, max_length=3)
     start_x: float = 0.0
     start_y: float = 0.0
@@ -206,6 +206,6 @@ class HealthResponse(BaseModel):
     status: str
     version: str = "1.0.0"
     database_connected: bool
-    openai_configured: bool
-    vector_store_configured: bool
+    ollama_connected: bool
+    chroma_ready: bool
     

@@ -22,7 +22,7 @@ async def list_tools() -> list[Tool]:
     return [
         Tool(
             name="search_memory",
-            description="Search past AI chat conversations using OpenAI Vector Store (hybrid semantic + keyword retrieval). Returns conversation metadata including title, summary, topics, and message previews.",
+            description="Search past AI chat conversations using local semantic search (nomic-embed-text embeddings via Ollama). Returns conversation metadata including title, summary, topics, and message previews.",
             inputSchema={
                 "type": "object",
                 "properties": {

@@ -3,7 +3,7 @@ Unit tests for services module.
 
 Tests all service components:
 - normalizer
-- summarizer (with mocked OpenAI calls)
+- summarizer (with mocked Ollama calls)
 - embedder (with mocked OpenAI calls)
 - dimensionality_reducer
 - clusterer
@@ -151,7 +151,7 @@ class TestNormalizer(unittest.TestCase):
 
 
 class TestSummarizer(unittest.TestCase):
-    """Test LLM-based summarization with mocked OpenAI calls."""
+    """Test LLM-based summarization with mocked Ollama/Qwen 2.5 calls."""
     
     def setUp(self):
         """Set up test fixtures."""
@@ -162,20 +162,27 @@ class TestSummarizer(unittest.TestCase):
             {"role": "assistant", "content": "Learn lists, dictionaries, and sets."}
         ]
     
-    @patch('backend.services.summarizer.get_client')
-    def test_summarize_conversation(self, mock_get_client):
-        """Test conversation summarization."""
-        # Mock OpenAI response
+    @patch('backend.services.summarizer.httpx.AsyncClient')
+    def test_summarize_conversation(self, mock_async_client):
+        """Test conversation summarization via Ollama."""
+        # Mock Ollama HTTP response
         mock_response = MagicMock()
-        mock_response.choices = [
-            MagicMock(message=MagicMock(content=json.dumps({
-                "summary": "Discussion about learning Python and data structures.",
-                "topics": ["Python", "Learning", "Data Structures"]
-            })))
-        ]
-        mock_client = MagicMock()
-        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
-        mock_get_client.return_value = mock_client
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {
+            "message": {
+                "content": json.dumps({
+                    "summary": "Discussion about learning Python and data structures.",
+                    "topics": ["Python", "Learning", "Data Structures"]
+                })
+            }
+        }
+        
+        # Set up the async context manager mock
+        mock_client_instance = AsyncMock()
+        mock_client_instance.post = AsyncMock(return_value=mock_response)
+        mock_async_client.return_value.__aenter__ = AsyncMock(return_value=mock_client_instance)
+        mock_async_client.return_value.__aexit__ = AsyncMock(return_value=False)
         
         # Run async test
         async def run_test():
@@ -207,19 +214,23 @@ class TestSummarizer(unittest.TestCase):
 
 
 class TestEmbedder(unittest.TestCase):
-    """Test embedding generation with mocked OpenAI calls."""
+    """Test embedding generation with mocked Ollama/nomic-embed-text calls."""
     
-    @patch('backend.services.embedder.get_client')
-    def test_generate_embedding(self, mock_get_client):
-        """Test single embedding generation."""
-        # Mock OpenAI response
+    @patch('backend.services.embedder.httpx.AsyncClient')
+    def test_generate_embedding(self, mock_async_client):
+        """Test single embedding generation via Ollama."""
+        # Mock Ollama HTTP response
         mock_response = MagicMock()
-        mock_response.data = [
-            MagicMock(embedding=[0.1] * 384)
-        ]
-        mock_client = MagicMock()
-        mock_client.embeddings.create = AsyncMock(return_value=mock_response)
-        mock_get_client.return_value = mock_client
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {
+            "embedding": [0.1] * 768
+        }
+        
+        mock_client_instance = AsyncMock()
+        mock_client_instance.post = AsyncMock(return_value=mock_response)
+        mock_async_client.return_value.__aenter__ = AsyncMock(return_value=mock_client_instance)
+        mock_async_client.return_value.__aexit__ = AsyncMock(return_value=False)
         
         # Run async test
         async def run_test():
@@ -227,21 +238,24 @@ class TestEmbedder(unittest.TestCase):
         
         embedding = asyncio.run(run_test())
         
-        self.assertEqual(len(embedding), 384)
+        self.assertEqual(len(embedding), 768)
         self.assertIsInstance(embedding[0], float)
     
-    @patch('backend.services.embedder.get_client')
-    def test_generate_embeddings_batch(self, mock_get_client):
-        """Test batch embedding generation."""
-        # Mock OpenAI response
+    @patch('backend.services.embedder.httpx.AsyncClient')
+    def test_generate_embeddings_batch(self, mock_async_client):
+        """Test batch embedding generation via Ollama."""
+        # Mock Ollama HTTP response (called once per text)
         mock_response = MagicMock()
-        mock_response.data = [
-            MagicMock(embedding=[0.1] * 384),
-            MagicMock(embedding=[0.2] * 384)
-        ]
-        mock_client = MagicMock()
-        mock_client.embeddings.create = AsyncMock(return_value=mock_response)
-        mock_get_client.return_value = mock_client
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {
+            "embedding": [0.1] * 768
+        }
+        
+        mock_client_instance = AsyncMock()
+        mock_client_instance.post = AsyncMock(return_value=mock_response)
+        mock_async_client.return_value.__aenter__ = AsyncMock(return_value=mock_client_instance)
+        mock_async_client.return_value.__aexit__ = AsyncMock(return_value=False)
         
         # Run async test
         async def run_test():
@@ -250,8 +264,8 @@ class TestEmbedder(unittest.TestCase):
         embeddings = asyncio.run(run_test())
         
         self.assertEqual(len(embeddings), 2)
-        self.assertEqual(len(embeddings[0]), 384)
-        self.assertEqual(len(embeddings[1]), 384)
+        self.assertEqual(len(embeddings[0]), 768)
+        self.assertEqual(len(embeddings[1]), 768)
     
     def test_prepare_text_for_embedding(self):
         """Test text preparation for embedding."""

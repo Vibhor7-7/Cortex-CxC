@@ -101,7 +101,7 @@ class TestTask2_3_1_SingleIngestion(unittest.TestCase):
             ).first()
             self.assertIsNotNone(embedding)
             self.assertIsNotNone(embedding.embedding_384d)
-            self.assertEqual(len(embedding.embedding_384d), 384)
+            self.assertEqual(len(embedding.embedding_384d), 768)
 
     def test_ingest_real_chatgpt_export(self):
         """Test ingesting the real ChatGPT export file (570KB)."""

@@ -59,8 +59,8 @@ def fit_umap_model(
     if X.ndim != 2:
         raise ValueError("Embeddings must be 2D array")
     
-    if X.shape[1] != 384:
-        raise ValueError(f"Expected 384D embeddings, got {X.shape[1]}D")
+    if X.shape[1] not in (384, 768):
+        raise ValueError(f"Expected 384D or 768D embeddings, got {X.shape[1]}D")
     
     if X.shape[0] < 2:
         raise ValueError("Need at least 2 embeddings to fit UMAP")
@@ -124,8 +124,8 @@ def reduce_embeddings(
     X = np.array(embeddings)
     
     # Validate dimensions
-    if X.shape[1] != 384:
-        raise ValueError(f"Expected 384D embeddings, got {X.shape[1]}D")
+    if X.shape[1] not in (384, 768):
+        raise ValueError(f"Expected 384D or 768D embeddings, got {X.shape[1]}D")
     
     # Transform to 3D
     coords_3d = model.transform(X)

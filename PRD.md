@@ -66,8 +66,8 @@ CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interac
      │        │
      ▼        ▼
 ┌─────────┐ ┌──────────────────────┐
-│ SQLite  │ │ OpenAI Vector Store  │
-│   DB    │ │ (hybrid retrieval)   │
+│ SQLite  │ │ Local Vector Store   │
+│   DB    │ │ (semantic retrieval) │
 │         │ │                      │
 └─────────┘ └──────────────────────┘
      ▲
@@ -80,9 +80,10 @@ CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interac
 
 ### 2.2 Tech Stack
 - **Frontend:** Vanilla HTML/CSS/JavaScript, Three.js (WebGL), OrbitControls + PointerLockControls
-- **Backend:** FastAPI, SQLAlchemy, BeautifulSoup4, OpenAI SDK
-- **Database:** SQLite (metadata + 3D coords) + OpenAI Vector Store (retrieval index)
-- **Embeddings:** OpenAI `text-embedding-3-small` (single embedding source)
+- **Backend:** FastAPI, SQLAlchemy, BeautifulSoup4, httpx
+- **Database:** SQLite (metadata + 3D coords) + Local Vector Store (numpy cosine similarity, JSON-persisted)
+- **Summarization:** Qwen 2.5 8B via Ollama (local)
+- **Embeddings:** nomic-embed-text via Ollama (768D, local)
 - **Dimension Reduction:** UMAP
 - **Clustering:** K-means
 - **MCP:** Anthropic MCP SDK (Python)
@@ -120,8 +121,9 @@ CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interac
   - `numpy>=1.26.3`
   - `scikit-learn>=1.4.0`
   - `umap-learn>=0.5.5`
-  - `openai>=1.12.0`
-  - `tiktoken>=0.6.0`
+  - `openai>=1.12.0`  ← **REMOVED** (replaced by Ollama + httpx)
+  - `tiktoken>=0.6.0`  ← **REMOVED**
+  - `httpx>=0.26.0`  ← **ADDED** (Ollama HTTP client)
   - `tenacity>=8.2.3`
   - `python-dotenv>=1.0.0`
 
@@ -136,10 +138,9 @@ CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interac
 - [x] **1.1.3** Create `backend/.env` file for configuration:
   ```
   DATABASE_URL=sqlite:///./cortex.db
-  OPENAI_API_KEY=your_key_here
-  OPENAI_EMBEDDING_MODEL=text-embedding-3-small
-  OPENAI_VECTOR_STORE_ID=
-  # If VECTOR_STORE_ID is blank, backend creates one on first ingest.
+  OLLAMA_BASE_URL=http://localhost:11434
+  OLLAMA_MODEL=qwen2.5
+  OLLAMA_EMBEDDING_MODEL=nomic-embed-text
   UMAP_N_NEIGHBORS=15
   UMAP_MIN_DIST=0.1
   N_CLUSTERS=5
@@ -284,25 +285,28 @@ CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interac
   - Clean and validate message content
 
 - [x] **2.2.2** Implement `backend/services/summarizer.py`:
-  - **Option A (Local - Recommended for hackathon):**
-    - Use extractive summarization (TF-IDF + sentence ranking)
-    - Extract top 5 keywords/topics using spaCy or RAKE
-    - Generate 2-3 sentence summary from top sentences
-  - **Option B (LLM-based - Higher quality):**
-    - Call OpenAI GPT-4o-mini API for summarization
+  - **Implementation: Local Qwen 2.5 (7B) via Ollama**
+    - Runs locally on-device via Ollama HTTP API (`http://localhost:11434`)
+    - Uses `qwen2.5` model for summarization and topic extraction
+    - Structured JSON output with `"format": "json"` parameter
     - Prompt: "Summarize this conversation in 2-3 sentences and extract 3-5 main topics"
-    - Parse JSON response
-  - Cache summaries to avoid regeneration
+    - Parse JSON response with `summary` and `topics` fields
+    - No API key required — fully offline, zero cost
+    - Retry logic with exponential backoff (tenacity)
+  - Cache summaries to disk to avoid regeneration
 
 - [x] **2.2.3** Create `backend/services/embedder.py`:
-  - Use OpenAI Embeddings API (`text-embedding-3-small`) as the single embedding source
+  - **Implementation: nomic-embed-text via Ollama (768D)**
+    - Runs locally via Ollama HTTP API (`http://localhost:11434/api/embeddings`)
+    - Uses `nomic-embed-text` model producing 768-dimensional vectors
+    - No API key required — fully offline, zero cost
   - `generate_embedding(text: str) -> List[float]` function
   - Add retry/backoff for rate limits (tenacity)
   - Cache embeddings by conversation ID to avoid recompute
   - Store raw embedding vectors in SQLite for UMAP → 3D projection
 
 - [x] **2.2.4** Create `backend/services/dimensionality_reducer.py`:
-  - Implement UMAP reduction (384D → 3D)
+  - Implement UMAP reduction (768D → 3D)
   - Configure UMAP parameters (n_neighbors=15, min_dist=0.1)
   - Fit on all conversation embeddings simultaneously
   - Save fitted UMAP model for future use
@@ -316,7 +320,7 @@ CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interac
 
 **Acceptance Criteria:**
 -  Normalized conversation has valid title, topics, summary - **PASSED**
--  Embeddings are generated via OpenAI and stored as float arrays - **PASSED**
+-  Embeddings are generated via Ollama (nomic-embed-text, 768D) and stored as float arrays - **PASSED**
 -  3D coordinates are properly scaled and distributed - **PASSED**
 -  Clusters are visually distinct in 3D space - **PASSED**
 
@@ -414,16 +418,16 @@ CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interac
 
 - **Processing Services** ([backend/services/](backend/services/))
   - **Normalizer** (228 lines) - Conversation standardization
-  - **Summarizer** (278 lines) - LLM-based summarization with fallback
-  - **Embedder** (357 lines) - OpenAI text-embedding-3-small integration (384D)
-  - **Dimensionality Reducer** (327 lines) - UMAP (384D → 3D) with caching
+  - **Summarizer** - Local Qwen 2.5 via Ollama for summarization + topic extraction
+  - **Embedder** (357 lines) - nomic-embed-text via Ollama (768D)
+  - **Dimensionality Reducer** (327 lines) - UMAP (768D → 3D) with caching
   - **Clusterer** (377 lines) - K-means clustering with semantic naming
 
 - **Ingestion API** ([backend/api/ingest.py](backend/api/ingest.py) - 403 lines)
   - `POST /api/ingest/` - Single file ingestion with auto-reprocessing option
   - `POST /api/ingest/batch` - Batch file ingestion (defaults to auto-reprocess)
   - `POST /api/ingest/reprocess` - Full re-clustering endpoint
-    - Loads all 384D embeddings from database
+    - Loads all 768D embeddings from database
     - Runs UMAP dimensionality reduction
     - Performs K-means clustering
     - Generates semantic cluster names from topics
@@ -471,8 +475,8 @@ CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interac
 
 ### Key Features Implemented
  Multi-format HTML parsing (ChatGPT, Claude)
- OpenAI embeddings generation (384D vectors)
- UMAP dimensionality reduction (384D → 3D)
+ Ollama embeddings generation (nomic-embed-text, 768D vectors)
+ UMAP dimensionality reduction (768D → 3D)
  K-means clustering with semantic naming
  Batch ingestion with auto-reprocessing
  Complete re-clustering pipeline
@@ -483,8 +487,8 @@ CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interac
 
 ### Ready for Phase 3
 The foundation is solid and ready for:
-- OpenAI Vector Store integration (Phase 3)
-- Hybrid semantic + keyword search (Phase 3)
+- Local vector store integration (Phase 3) — **COMPLETE**
+- Semantic search via nomic-embed-text embeddings (Phase 3) — **COMPLETE**
 - MCP server implementation (Phase 4)
 - Frontend-backend integration (Phase 4)
 
@@ -1465,7 +1469,7 @@ The frontend currently generates fake data but expects this structure from `GET 
 │  │           Service Layer                     │              │
 │  │  • HTML Parser (ChatGPT/Claude)             │              │
 │  │  • Embedder (OpenAI embeddings)             │              │
-│  │  • Summarizer (extractive/LLM)              │              │
+│  │  • Summarizer (Qwen 2.5 via Ollama)          │              │
 │  │  • UMAP Reducer (384D → 3D)                 │              │
 │  │  • K-means Clusterer                        │              │
 │  │  • Vector Store Indexing (OpenAI)           │              │

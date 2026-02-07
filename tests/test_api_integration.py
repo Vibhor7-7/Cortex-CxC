@@ -60,8 +60,8 @@ class TestAPIIntegration(unittest.TestCase):
         self.assertIn("status", data)
         self.assertIn("version", data)
         self.assertIn("database_connected", data)
-        self.assertIn("openai_configured", data)
-        self.assertIn("vector_store_configured", data)
+        self.assertIn("ollama_connected", data)
+        self.assertIn("chroma_ready", data)
 
         # Database should be connected
         self.assertTrue(data["database_connected"])

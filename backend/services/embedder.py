@@ -1,9 +1,9 @@
 """
-OpenAI embedding generation service using text-embedding-3-small.
+Embedding generation service using nomic-embed-text via Ollama.
 
 This module handles:
-- Generating 384-dimensional embeddings from text
-- Retry logic with exponential backoff for rate limits
+- Generating 768-dimensional embeddings from text via Ollama (nomic-embed-text)
+- Retry logic with exponential backoff
 - Caching embeddings by conversation ID
 - Batch embedding generation for multiple texts
 """
@@ -14,7 +14,7 @@ import hashlib
 from typing import List, Dict, Any
 from pathlib import Path
 
-from openai import AsyncOpenAI
+import httpx
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -23,22 +23,10 @@ from tenacity import (
 )
 
 
-# Initialize OpenAI client (lazily to allow tests without API key)
-_client = None
-
-def get_client():
-    """Get or initialize the OpenAI client."""
-    global _client
-    if _client is None:
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("OPENAI_API_KEY environment variable not set")
-        _client = AsyncOpenAI(api_key=api_key)
-    return _client
-
-# Embedding model
-EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
-EMBEDDING_DIMENSION = 384  # text-embedding-3-small produces 384D embeddings
+# Ollama configuration
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+EMBEDDING_MODEL = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
+EMBEDDING_DIMENSION = 768  # nomic-embed-text produces 768D embeddings
 
 # Cache directory for embeddings
 CACHE_DIR = Path(__file__).parent.parent.parent / ".cache" / "embeddings"
@@ -51,7 +39,7 @@ async def generate_embedding(
     use_cache: bool = True
 ) -> List[float]:
     """
-    Generate a 384-dimensional embedding vector from text using OpenAI.
+    Generate a 768-dimensional embedding vector from text using Ollama (nomic-embed-text).
     
     Args:
         text: Text content to embed
@@ -59,11 +47,11 @@ async def generate_embedding(
         use_cache: Whether to use cached embeddings if available
     
     Returns:
-        List of 384 floats representing the embedding vector
+        List of 768 floats representing the embedding vector
     
     Raises:
         ValueError: If text is empty
-        openai.APIError: If API call fails after retries
+        httpx.HTTPError: If Ollama API call fails after retries
     """
     if not text or not text.strip():
         raise ValueError("Cannot generate embedding: text is empty")
@@ -74,7 +62,7 @@ async def generate_embedding(
         if cached:
             return cached
     
-    # Generate embedding using OpenAI API
+    # Generate embedding using Ollama API
     embedding = await _call_embedding_api(text)
     
     # Cache the result
@@ -104,7 +92,7 @@ async def generate_embeddings_batch(
     
     Raises:
         ValueError: If texts list is empty or lengths don't match
-        openai.APIError: If API call fails after retries
+        httpx.HTTPError: If Ollama API call fails after retries
     """
     if not texts:
         raise ValueError("Cannot generate embeddings: texts list is empty")
@@ -156,7 +144,7 @@ async def generate_embeddings_batch(
 )
 async def _call_embedding_api(text: str) -> List[float]:
     """
-    Call OpenAI Embeddings API for a single text.
+    Call Ollama Embeddings API (nomic-embed-text) for a single text.
     
     Args:
         text: Text to embed
@@ -168,13 +156,18 @@ async def _call_embedding_api(text: str) -> List[float]:
         Exception: If API call fails
     """
     try:
-        response = await get_client().embeddings.create(
-            model=EMBEDDING_MODEL,
-            input=text,
-            encoding_format="float"
-        )
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                f"{OLLAMA_BASE_URL}/api/embeddings",
+                json={
+                    "model": EMBEDDING_MODEL,
+                    "prompt": text
+                }
+            )
+            response.raise_for_status()
         
-        embedding = response.data[0].embedding
+        result = response.json()
+        embedding = result.get("embedding", [])
         
         # Validate dimension
         if len(embedding) != EMBEDDING_DIMENSION:
@@ -185,8 +178,12 @@ async def _call_embedding_api(text: str) -> List[float]:
         
         return embedding
         
+    except httpx.HTTPError as e:
+        raise Exception(f"Ollama Embeddings API call failed (is 'ollama serve' running?): {e}")
     except Exception as e:
-        raise Exception(f"OpenAI Embeddings API call failed: {e}")
+        if "Ollama" in str(e):
+            raise
+        raise Exception(f"Embedding generation failed: {e}")
 
 
 @retry(
@@ -197,7 +194,8 @@ async def _call_embedding_api(text: str) -> List[float]:
 )
 async def _call_embedding_api_batch(texts: List[str]) -> List[List[float]]:
     """
-    Call OpenAI Embeddings API for multiple texts.
+    Call Ollama Embeddings API for multiple texts (sequentially, as Ollama
+    does not support batch embedding in a single call).
     
     Args:
         texts: List of texts to embed
@@ -208,28 +206,34 @@ async def _call_embedding_api_batch(texts: List[str]) -> List[List[float]]:
     Raises:
         Exception: If API call fails
     """
-    try:
-        response = await get_client().embeddings.create(
-            model=EMBEDDING_MODEL,
-            input=texts,
-            encoding_format="float"
-        )
-        
-        # Extract embeddings in correct order
-        embeddings = [item.embedding for item in response.data]
-        
-        # Validate dimensions
-        for i, embedding in enumerate(embeddings):
-            if len(embedding) != EMBEDDING_DIMENSION:
-                raise ValueError(
-                    f"Expected {EMBEDDING_DIMENSION}D embedding at index {i}, "
-                    f"got {len(embedding)}D"
+    embeddings = []
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        for text in texts:
+            try:
+                response = await client.post(
+                    f"{OLLAMA_BASE_URL}/api/embeddings",
+                    json={
+                        "model": EMBEDDING_MODEL,
+                        "prompt": text
+                    }
                 )
-        
-        return embeddings
-        
-    except Exception as e:
-        raise Exception(f"OpenAI Embeddings API batch call failed: {e}")
+                response.raise_for_status()
+                
+                result = response.json()
+                embedding = result.get("embedding", [])
+                
+                if len(embedding) != EMBEDDING_DIMENSION:
+                    raise ValueError(
+                        f"Expected {EMBEDDING_DIMENSION}D embedding, "
+                        f"got {len(embedding)}D"
+                    )
+                
+                embeddings.append(embedding)
+                
+            except Exception as e:
+                raise Exception(f"Ollama Embeddings API batch call failed: {e}")
+    
+    return embeddings
 
 
 def _load_from_cache(conversation_id: str) -> List[float] | None:
