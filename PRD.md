@@ -889,42 +889,37 @@ The foundation is solid and ready for:
 ---
 
 ### Task 5.2: Search Memory Tool
-**Priority:** P1 (High)  
-**Estimated Time:** 2 hours  
+**Priority:** P1 (High)
+**Estimated Time:** 2 hours
 **Owner:** MCP Team
+**Status:** ✅ **COMPLETE**
 
 #### Sub-tasks:
-- [ ] **5.2.1** Implement `mcp/search.py`:
-  - Tool name: `search_memory`
-  - Tool description: "Search past AI chat conversations using OpenAI Vector Store (hybrid semantic + keyword retrieval)"
-  - Input schema:
-    ```json
-    {
-      "query": {
-        "type": "string",
-        "description": "Search query for finding relevant conversations"
-      },
-      "limit": {
-        "type": "integer",
-        "description": "Maximum number of results to return (default 5)",
-        "default": 5
-      }
-    }
-    ```
+- [x] **5.2.1** Implement `search_memory` tool in `cortex_mcp/server.py`:
+  - Tool name: `search_memory` ✅
+  - Tool description: "Search past AI chat conversations using OpenAI Vector Store (hybrid semantic + keyword retrieval)" ✅
+  - Input schema with query and limit parameters ✅
   - Implementation:
-    - Call backend `POST /api/search` endpoint
-    - Format results for LLM consumption
-    - Include: title, summary, topics, key messages
+    - Calls backend `POST /api/search` endpoint ✅
+    - Formats results for LLM consumption ✅
+    - Includes: title, summary, topics, message preview, cluster info ✅
 
-- [ ] **5.2.2** Add result formatting:
-  - Return structured text optimized for LLM reading
-  - Include conversation metadata
-  - Truncate long content if needed
+- [x] **5.2.2** Add result formatting:
+  - Returns structured text optimized for LLM reading ✅
+  - Includes conversation metadata (ID, title, topics, cluster, message count) ✅
+  - Truncates long content (previews limited to 300 chars) ✅
+  - Shows relevance scores and search time ✅
+  - Handles empty results with helpful message ✅
 
 **Acceptance Criteria:**
 - ✅ Tool successfully calls backend search API
 - ✅ Returns relevant results formatted for LLM
 - ✅ Handles empty results gracefully
+
+**Implementation Details:**
+- Enhanced [backend/cortex_mcp/server.py:65-113](backend/cortex_mcp/server.py#L65-L113) with rich result formatting
+- Includes relevance scores, topics, clusters, and message previews
+- Empty results return helpful suggestions to user
 
 ---
 

@@ -22,17 +22,17 @@ async def list_tools() -> list[Tool]:
     return [
         Tool(
             name="search_memory",
-            description="Search through chat history and context to find relevant past conversations",
+            description="Search past AI chat conversations using OpenAI Vector Store (hybrid semantic + keyword retrieval). Returns conversation metadata including title, summary, topics, and message previews.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Search query to find relevant chat history"
+                        "description": "Search query for finding relevant conversations"
                     },
                     "limit": {
                         "type": "integer",
-                        "description": "Maximum number of results to return",
+                        "description": "Maximum number of results to return (default 5)",
                         "default": 5
                     }
                 },
@@ -67,21 +67,51 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                 limit = arguments.get("limit", 5)
 
                 response = await client.post(
-                    f"{config.backend_api_url}/search",
+                    f"{config.backend_api_url}/api/search",
                     json={"query": query, "limit": limit}
                 )
                 response.raise_for_status()
-                results = response.json()
+                data = response.json()
+                results = data.get('results', [])
+
+                if not results:
+                    return [TextContent(
+                        type="text",
+                        text=f"No conversations found matching '{query}'. Try using different keywords or broader terms."
+                    )]
+
+                formatted_results = []
+                for idx, r in enumerate(results, 1):
+                    result_text = f"**Result {idx}** (Relevance: {r.get('score', 0.0):.2f})\n"
+                    result_text += f"- **Conversation ID**: {r.get('conversation_id', 'N/A')}\n"
+                    result_text += f"- **Title**: {r.get('title', 'Untitled')}\n"
+                    result_text += f"- **Summary**: {r.get('summary', 'No summary available')}\n"
+
+                    topics = r.get('topics', [])
+                    if topics:
+                        result_text += f"- **Topics**: {', '.join(topics)}\n"
+
+                    cluster = r.get('cluster_name')
+                    if cluster:
+                        result_text += f"- **Cluster**: {cluster}\n"
+
+                    preview = r.get('message_preview')
+                    if preview:
+                        truncated = preview[:300] + "..." if len(preview) > 300 else preview
+                        result_text += f"- **Preview**: {truncated}\n"
+
+                    message_count = r.get('message_count')
+                    if message_count:
+                        result_text += f"- **Messages**: {message_count}\n"
+
+                    formatted_results.append(result_text)
+
+                search_time = data.get('search_time_ms', 0)
+                header = f"Found {len(results)} relevant conversation(s) for '{query}' (searched in {search_time:.0f}ms)\n\n"
 
                 return [TextContent(
                     type="text",
-                    text=f"Found {len(results)} relevant conversations:\n\n" +
-                         "\n\n".join([
-                             f"Chat ID: {r['chat_id']}\n"
-                             f"Relevance: {r.get('score', 'N/A')}\n"
-                             f"Summary: {r.get('summary', 'No summary available')}"
-                             for r in results
-                         ])
+                    text=header + "\n\n".join(formatted_results)
                 )]
 
             elif name == "fetch_chat":
