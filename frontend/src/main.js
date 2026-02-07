@@ -3,7 +3,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
 
 /**********************************************************************
- * Context Atlas — split-file Three.js
+ * Cortext — split-file Three.js
  * (Logic preserved 1:1 — just moved into this module)
  **********************************************************************/
 
