@@ -9,7 +9,7 @@ Features:
 - Automatic chunking for texts >1024 tokens
 - Generates short summaries (~50 words)
 - Smart device detection (CUDA/MPS/CPU)
-- Optimized for fast paragraph summarization
+- Optimized for fast, scalable summarization
 
 Note: The main project uses OpenAI for summarization. This is a standalone
 test/demo script for exploring local summarization alternatives.
@@ -17,6 +17,7 @@ test/demo script for exploring local summarization alternatives.
 
 import sys
 import torch
+from typing import Iterable, List
 
 try:
     from transformers import pipeline
@@ -72,9 +73,17 @@ def create_summarization_pipeline():
         sys.exit(1)
 
 
-def chunk_text(text, tokenizer, max_chunk_tokens=1024, overlap=100):
+def _max_input_tokens(tokenizer, fallback=512):
+    max_len = getattr(tokenizer, "model_max_length", fallback)
+    if not isinstance(max_len, int) or max_len > 10000:
+        max_len = fallback
+    return max_len
+
+
+def iter_chunks(text, tokenizer, max_chunk_tokens=None, overlap=80):
     """
-    Split text into overlapping chunks for processing large contexts.
+    Yield overlapping chunks for processing large contexts without
+    tokenizing the entire input at once.
 
     Args:
         text: Input text to chunk
@@ -83,27 +92,84 @@ def chunk_text(text, tokenizer, max_chunk_tokens=1024, overlap=100):
         overlap: Number of tokens to overlap between chunks
 
     Returns:
-        List of text chunks
+        Generator of text chunks
     """
-    # Tokenize the full text
-    tokens = tokenizer.encode(text, add_special_tokens=False)
+    if max_chunk_tokens is None:
+        max_chunk_tokens = _max_input_tokens(tokenizer)
 
-    if len(tokens) <= max_chunk_tokens:
-        return [text]
+    paragraphs = [p for p in text.split("\n\n") if p.strip()]
+    if not paragraphs:
+        paragraphs = [text]
 
-    chunks = []
-    start = 0
-    while start < len(tokens):
-        end = min(start + max_chunk_tokens, len(tokens))
-        chunk_tokens = tokens[start:end]
-        chunk_text = tokenizer.decode(chunk_tokens, skip_special_tokens=True)
-        chunks.append(chunk_text)
-        start += max_chunk_tokens - overlap
+    current_tokens: List[int] = []
+    current_text_parts: List[str] = []
 
-    return chunks
+    for para in paragraphs:
+        para_tokens = tokenizer.encode(para, add_special_tokens=False)
+        if len(para_tokens) > max_chunk_tokens:
+            # Flush current chunk before splitting large paragraph
+            if current_tokens:
+                yield tokenizer.decode(current_tokens, skip_special_tokens=True)
+                current_tokens = []
+                current_text_parts = []
+
+            start = 0
+            while start < len(para_tokens):
+                end = min(start + max_chunk_tokens, len(para_tokens))
+                chunk_tokens = para_tokens[start:end]
+                yield tokenizer.decode(chunk_tokens, skip_special_tokens=True)
+                start += max_chunk_tokens - overlap
+            continue
+
+        if len(current_tokens) + len(para_tokens) > max_chunk_tokens and current_tokens:
+            yield tokenizer.decode(current_tokens, skip_special_tokens=True)
+            if overlap > 0:
+                overlap_tokens = current_tokens[-overlap:]
+                current_tokens = overlap_tokens[:]
+                current_text_parts = [tokenizer.decode(overlap_tokens, skip_special_tokens=True)]
+            else:
+                current_tokens = []
+                current_text_parts = []
+
+        current_tokens.extend(para_tokens)
+        current_text_parts.append(para)
+
+    if current_tokens:
+        yield tokenizer.decode(current_tokens, skip_special_tokens=True)
 
 
-def summarize(text, model, tokenizer, device, target_words=50):
+def _to_device(inputs, device):
+    if device == 0:
+        return {k: v.to("cuda") for k, v in inputs.items()}
+    if device == "mps":
+        return {k: v.to("mps") for k, v in inputs.items()}
+    return inputs
+
+
+def _summarize_batch(texts, model, tokenizer, device, max_length, min_length):
+    max_input = _max_input_tokens(tokenizer)
+    inputs = tokenizer(
+        texts,
+        return_tensors="pt",
+        max_length=max_input,
+        truncation=True,
+        padding=True
+    )
+    inputs = _to_device(inputs, device)
+    with torch.inference_mode():
+        summary_ids = model.generate(
+            inputs["input_ids"],
+            max_length=max_length,
+            min_length=min_length,
+            num_beams=1,  # fastest
+            no_repeat_ngram_size=3,
+            length_penalty=1.0,
+            repetition_penalty=1.4
+        )
+    return [tokenizer.decode(s, skip_special_tokens=True).strip() for s in summary_ids]
+
+
+def summarize(text, model, tokenizer, device, target_words=70):
     """
     Summarize text using the Pegasus model.
 
@@ -118,72 +184,48 @@ def summarize(text, model, tokenizer, device, target_words=50):
         device: Device (cuda/mps/cpu)
         target_words: Approximate target length in words (default 50)
     """
-    # Rough token length heuristic for ~50 words.
-    max_length = max(32, int(target_words * 1.4))
-    min_length = max(16, int(target_words * 0.6))
+    # Rough token length heuristic for ~70 words.
+    max_length = max(40, int(target_words * 1.5))
+    min_length = max(22, int(target_words * 0.7))
 
-    # Check if text needs chunking
+    max_input = _max_input_tokens(tokenizer)
+
+    # Fast path: short input
     token_count = len(tokenizer.encode(text, add_special_tokens=False))
+    if token_count <= max_input:
+        return _summarize_batch([text], model, tokenizer, device, max_length, min_length)[0]
 
-    if token_count > 1024:
-        # For very large contexts, chunk and summarize progressively
-        chunks = chunk_text(text, tokenizer, max_chunk_tokens=1024, overlap=100)
-        print(f"  [Large context detected: {token_count} tokens split into {len(chunks)} chunks]")
+    # Large input: chunk -> summarize -> reduce (iteratively)
+    chunk_iter = iter_chunks(text, tokenizer, max_chunk_tokens=max_input, overlap=80)
+    summaries: List[str] = []
+    batch: List[str] = []
+    batch_size = 6
 
-        # Summarize each chunk
-        chunk_summaries = []
-        for i, chunk in enumerate(chunks):
-            inputs = tokenizer(chunk, return_tensors="pt", max_length=1024, truncation=True)
+    for chunk in chunk_iter:
+        batch.append(chunk)
+        if len(batch) >= batch_size:
+            summaries.extend(_summarize_batch(batch, model, tokenizer, device, max_length, min_length))
+            batch = []
+            # Reduce periodically to keep memory small
+            if len(summaries) >= 20:
+                summaries = reduce_summaries(summaries, model, tokenizer, device, max_length, min_length)
 
-            # Move to device
-            if device == 0:  # CUDA
-                inputs = {k: v.to("cuda") for k, v in inputs.items()}
-            elif device == "mps":
-                inputs = {k: v.to("mps") for k, v in inputs.items()}
+    if batch:
+        summaries.extend(_summarize_batch(batch, model, tokenizer, device, max_length, min_length))
 
-            with torch.inference_mode():
-                summary_ids = model.generate(
-                    inputs["input_ids"],
-                    max_length=max(28, int(target_words * 0.9)),
-                    min_length=max(16, int(target_words * 0.4)),
-                    num_beams=2,
-                    early_stopping=True,
-                    no_repeat_ngram_size=3,
-                    length_penalty=1.0
-                )
+    # Final reduce
+    summaries = reduce_summaries(summaries, model, tokenizer, device, max_length, min_length)
+    return summaries[0] if summaries else ""
 
-            chunk_summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
-            chunk_summaries.append(chunk_summary)
 
-        # Combine chunk summaries and create final summary
-        combined = " ".join(chunk_summaries)
-        inputs = tokenizer(combined, return_tensors="pt", max_length=1024, truncation=True)
-    else:
-        # Normal processing for texts within token limit
-        inputs = tokenizer(text, return_tensors="pt", max_length=1024, truncation=True)
-
-    # Move to device
-    if device == 0:  # CUDA
-        inputs = {k: v.to("cuda") for k, v in inputs.items()}
-    elif device == "mps":
-        inputs = {k: v.to("mps") for k, v in inputs.items()}
-
-    # Generate summary with parameters optimized for speed and short output
-    with torch.inference_mode():
-        summary_ids = model.generate(
-            inputs["input_ids"],
-            max_length=max_length,
-            min_length=min_length,
-            num_beams=2,  # Fewer beams for faster output
-            early_stopping=True,
-            no_repeat_ngram_size=3,
-            length_penalty=1.0,
-            repetition_penalty=1.5
-        )
-
-    # Decode
-    summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True).strip()
-    return summary
+def reduce_summaries(summaries, model, tokenizer, device, max_length, min_length):
+    if len(summaries) <= 1:
+        return summaries
+    grouped: List[str] = []
+    group_size = 6
+    for i in range(0, len(summaries), group_size):
+        grouped.append(" ".join(summaries[i:i+group_size]))
+    return _summarize_batch(grouped, model, tokenizer, device, max_length, min_length)
 
 
 def read_paragraph():
@@ -213,8 +255,8 @@ def main():
         return
 
     try:
-        result = summarize(text, model, tokenizer, device, target_words=50)
-        print(f"\nSummary (~50 words, {len(result.split())} words):")
+        result = summarize(text, model, tokenizer, device, target_words=70)
+        print(f"\nSummary (~70 words, {len(result.split())} words):")
         print(result)
     except Exception as e:
         print(f"Error during summarization: {e}")
