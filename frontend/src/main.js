@@ -258,15 +258,16 @@ function pickTags(topic) {
   return set.slice(0, 3);
 }
 
-const nodes = new Array(CFG.N);
-const vectors = new Array(CFG.N);
-const clusterId = new Uint8Array(CFG.N);
-const timestamps = new Array(CFG.N);
+// Initialize with fake data size, but allow dynamic resizing
+let nodes = new Array(CFG.N);
+let vectors = new Array(CFG.N);
+let clusterId = new Uint8Array(CFG.N);
+let timestamps = new Array(CFG.N);
 
 // Also keep anchor positions (embedding projection -> 3D)
-const anchors = new Float32Array(CFG.N * 3);
-const pos = new Float32Array(CFG.N * 3);
-const vel = new Float32Array(CFG.N * 3);
+let anchors = new Float32Array(CFG.N * 3);
+let pos = new Float32Array(CFG.N * 3);
+let vel = new Float32Array(CFG.N * 3);
 
 // Build simple 3D projection per cluster using random basis vectors
 const basis = clusters.map(() => {
@@ -358,7 +359,18 @@ for (let i=0; i<CFG.N; i++) {
 }
 
 // ---------- Build cluster filter UI ----------
+// Store cluster metadata from backend
+let backendClusterMetadata = null;
+
 function clusterName(c) {
+  // Use backend metadata if available
+  if (backendClusterMetadata) {
+    const meta = backendClusterMetadata.find(m => m.cluster_id === c);
+    if (meta && meta.cluster_name) {
+      return `${c} — ${meta.cluster_name}`;
+    }
+  }
+  // Fallback to topics if using fake data
   return `${c} — ${TOPICS[c % TOPICS.length]}`;
 }
 clusterSel.innerHTML = "";
@@ -596,21 +608,47 @@ const wave = {
 
 // ---------- Cosine similarity + top-K neighbors ----------
 function topKNeighbors(idx, K) {
-  const v = vectors[idx];
   const bestSim = new Float32Array(K);
   const bestIdx = new Int32Array(K);
   for (let k=0; k<K; k++) { bestSim[k] = -1e9; bestIdx[k] = -1; }
 
-  for (let j=0; j<CFG.N; j++) {
-    if (j === idx) continue;
-    const sim = dot(v, vectors[j]);
-    let minK = 0;
-    for (let k=1; k<K; k++) if (bestSim[k] < bestSim[minK]) minK = k;
-    if (sim > bestSim[minK]) {
-      bestSim[minK] = sim;
-      bestIdx[minK] = j;
+  // Use vector similarity if we have vectors (fake data mode)
+  // Otherwise use spatial distance (backend data mode)
+  const useVectors = vectors[idx] != null;
+
+  if (useVectors) {
+    const v = vectors[idx];
+    for (let j=0; j<CFG.N; j++) {
+      if (j === idx) continue;
+      if (!vectors[j]) continue;
+      const sim = dot(v, vectors[j]);
+      let minK = 0;
+      for (let k=1; k<K; k++) if (bestSim[k] < bestSim[minK]) minK = k;
+      if (sim > bestSim[minK]) {
+        bestSim[minK] = sim;
+        bestIdx[minK] = j;
+      }
+    }
+  } else {
+    // Use spatial proximity (inverse distance)
+    const px = pos[idx*3+0], py = pos[idx*3+1], pz = pos[idx*3+2];
+    for (let j=0; j<CFG.N; j++) {
+      if (j === idx) continue;
+      const dx = pos[j*3+0] - px;
+      const dy = pos[j*3+1] - py;
+      const dz = pos[j*3+2] - pz;
+      const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      // Convert distance to similarity (closer = higher score)
+      const sim = dist > 0 ? 1.0 / (1.0 + dist * 0.1) : 1.0;
+      let minK = 0;
+      for (let k=1; k<K; k++) if (bestSim[k] < bestSim[minK]) minK = k;
+      if (sim > bestSim[minK]) {
+        bestSim[minK] = sim;
+        bestIdx[minK] = j;
+      }
     }
   }
+
   const pairs = [];
   for (let k=0; k<K; k++) pairs.push([bestSim[k], bestIdx[k]]);
   pairs.sort((a,b) => b[0]-a[0]);
@@ -1471,6 +1509,76 @@ updateSelectedUI();
 // ---------- Build all edges at startup ----------
 buildAllEdges();
 
+// ---------- Helper functions for dynamic data loading ----------
+
+/**
+ * Rebuild cluster filter dropdown with backend cluster data
+ */
+function rebuildClusterFilter(clusterIds, clusterMetadata = null) {
+  clusterSel.innerHTML = "";
+
+  const optAll = document.createElement("option");
+  optAll.value = "-1";
+  optAll.textContent = "All";
+  clusterSel.appendChild(optAll);
+
+  for (const cid of clusterIds) {
+    const opt = document.createElement("option");
+    opt.value = String(cid);
+
+    // Use backend cluster name if available, otherwise fallback
+    if (clusterMetadata) {
+      const meta = clusterMetadata.find(m => m.cluster_id === cid);
+      opt.textContent = meta ? `${cid} — ${meta.cluster_name || 'Cluster ' + cid}` : `Cluster ${cid}`;
+    } else {
+      opt.textContent = `Cluster ${cid}`;
+    }
+
+    clusterSel.appendChild(opt);
+  }
+}
+
+/**
+ * Rebuild points geometry with new data
+ */
+function rebuildPointsGeometry() {
+  const N = nodes.length;
+
+  // Update position attribute
+  geom.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+
+  // Rebuild color, alpha, boost attributes
+  const aColor = new Float32Array(N * 3);
+  const aAlpha = new Float32Array(N);
+  const aBoost = new Float32Array(N);
+
+  // Find max cluster ID for color distribution
+  const maxCluster = Math.max(...Array.from(clusterId));
+
+  for (let i = 0; i < N; i++) {
+    const c = clusterId[i];
+    const hue = (c / (maxCluster + 1));
+    const col = new THREE.Color().setHSL(hue, 0.65, 0.62);
+    aColor[i * 3 + 0] = col.r;
+    aColor[i * 3 + 1] = col.g;
+    aColor[i * 3 + 2] = col.b;
+    aAlpha[i] = 0.95;
+    aBoost[i] = 1.0;
+    aBoostTarget[i] = 1.0;
+    aBoostBase[i] = 1.0;
+  }
+
+  geom.setAttribute("aColor", new THREE.BufferAttribute(aColor, 3));
+  geom.setAttribute("aAlpha", new THREE.BufferAttribute(aAlpha, 1));
+  geom.setAttribute("aBoost", new THREE.BufferAttribute(aBoost, 1));
+
+  // Mark attributes as needing update
+  geom.attributes.position.needsUpdate = true;
+  geom.attributes.aColor.needsUpdate = true;
+  geom.attributes.aAlpha.needsUpdate = true;
+  geom.attributes.aBoost.needsUpdate = true;
+}
+
 // ---------- Backend data bootstrap ----------
 /**
  * Try to load real data from the Cortex backend.
@@ -1500,7 +1608,74 @@ async function tryLoadBackendData() {
       return;
     }
 
-    showToast(`Loaded ${viz.nodes.length} conversations from backend`, "success", 3000);
+    // 3. Replace fake data with backend data
+    const N = viz.nodes.length;
+
+    // Resize arrays
+    nodes = new Array(N);
+    vectors = new Array(N); // Will be null since we don't need client-side vectors
+    clusterId = new Uint8Array(N);
+    timestamps = new Array(N);
+    anchors = new Float32Array(N * 3);
+    pos = new Float32Array(N * 3);
+    vel = new Float32Array(N * 3);
+
+    // Populate from backend data
+    const backendClusters = new Set();
+    for (let i = 0; i < N; i++) {
+      const node = viz.nodes[i];
+
+      // Store node data
+      nodes[i] = {
+        id: node.id,
+        title: node.title || "Untitled",
+        cluster: node.cluster_id ?? 0,
+        tags: node.topics || [],
+        snippet: node.summary || "",
+        full: node.summary || "", // Will be loaded on-demand
+        time: new Date(node.created_at),
+        backendId: node.id // Track backend ID for API calls
+      };
+
+      clusterId[i] = node.cluster_id ?? 0;
+      timestamps[i] = new Date(node.created_at);
+      backendClusters.add(node.cluster_id ?? 0);
+
+      // Use start_position for anchor (initial embedding position)
+      const [ax, ay, az] = node.start_position || [0, 0, 0];
+      anchors[i * 3 + 0] = ax;
+      anchors[i * 3 + 1] = ay;
+      anchors[i * 3 + 2] = az;
+
+      // Use position for current animated position
+      const [px, py, pz] = node.position || node.start_position || [0, 0, 0];
+      pos[i * 3 + 0] = px;
+      pos[i * 3 + 1] = py;
+      pos[i * 3 + 2] = pz;
+
+      // Initialize velocity to zero
+      vel[i * 3 + 0] = 0;
+      vel[i * 3 + 1] = 0;
+      vel[i * 3 + 2] = 0;
+
+      // We don't use vectors for backend mode (search is done server-side)
+      vectors[i] = null;
+    }
+
+    // Update CFG.N to match backend data
+    CFG.N = N;
+
+    // Store cluster metadata globally
+    backendClusterMetadata = viz.clusters || null;
+
+    // Rebuild cluster filter dropdown with backend clusters
+    rebuildClusterFilter(Array.from(backendClusters).sort((a, b) => a - b), viz.clusters);
+
+    // Rebuild geometry with new data
+    rebuildPointsGeometry();
+    buildAllEdges();
+
+    showToast(`Loaded ${N} conversations from backend`, "success", 3000);
     backendDataLoaded = true;
 
     // Build the lookup index
