@@ -70,6 +70,21 @@ class ChatGPTParser(BaseParser):
             'messages': messages,
             'created_at': created_at
         }
+
+    def parse_all(self) -> List[Dict]:
+        """
+        Parse all conversations from a ChatGPT HTML export.
+
+        Returns:
+            List of conversation dicts (same shape as parse()).
+            Falls back to a single parsed conversation if no JSON array found.
+        """
+        json_results = self._try_parse_json_data_all()
+        if json_results:
+            return json_results
+
+        # Fallback to a single conversation parse
+        return [self.parse()]
     
     def parse_all(self) -> List[Dict]:
         """
@@ -140,6 +155,46 @@ class ChatGPTParser(BaseParser):
                                         results.append(parsed)
                                 if results:
                                     return results
+                        except json.JSONDecodeError:
+                            continue
+
+        return None
+
+    def _try_parse_json_data_all(self) -> Optional[List[Dict]]:
+        """
+        Try to extract all conversations from embedded JSON in script tags.
+
+        Returns:
+            List of parsed conversation dicts or None if no JSON found.
+        """
+        scripts = self.soup.find_all('script')
+
+        for script in scripts:
+            script_text = script.string
+            if not script_text:
+                continue
+
+            patterns = [
+                r'var\s+jsonData\s*=\s*',
+                r'const\s+conversations\s*=\s*',
+                r'var\s+conversations\s*=\s*',
+            ]
+
+            for pattern in patterns:
+                match = re.search(pattern + r'\[', script_text)
+                if match:
+                    start_pos = match.end() - 1
+                    json_text = script_text[start_pos:]
+                    json_str = self._extract_json_array(json_text)
+
+                    if json_str:
+                        try:
+                            conversations = json.loads(json_str)
+                            if conversations and isinstance(conversations, list):
+                                return [
+                                    self._parse_json_conversation(conv)
+                                    for conv in conversations
+                                ]
                         except json.JSONDecodeError:
                             continue
 
