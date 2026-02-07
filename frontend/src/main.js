@@ -24,6 +24,11 @@ const CFG = {
   DAMPING: 2.9,          // critical-ish damping factor
   GRAVITY_RADIUS: 16,
   GRAVITY_STRENGTH: 1.8,
+  FOCUS_RADIUS: 36,
+  WAVE_SPEED: 60,
+  WAVE_WIDTH: 14,
+  WAVE_STRENGTH: 0.6,
+  WAVE_MAX_DIST: 220,
   STAR_COUNT: 2200,
   FOG_NEAR: 35,
   FOG_FAR: 170,
@@ -328,6 +333,7 @@ const aColor = new Float32Array(CFG.N * 3);
 const aAlpha = new Float32Array(CFG.N);
 const aBoost = new Float32Array(CFG.N);
 const aBoostTarget = new Float32Array(CFG.N);
+const aBoostBase = new Float32Array(CFG.N);
 for (let i=0; i<CFG.N; i++) {
   const c = clusterId[i];
   const hue = (c / CFG.CLUSTERS);
@@ -338,6 +344,7 @@ for (let i=0; i<CFG.N; i++) {
   aAlpha[i] = 0.95;
   aBoost[i] = 1.0;
   aBoostTarget[i] = 1.0;
+  aBoostBase[i] = 1.0;
 }
 geom.setAttribute("aColor", new THREE.BufferAttribute(aColor, 3));
 geom.setAttribute("aAlpha", new THREE.BufferAttribute(aAlpha, 1));
@@ -513,6 +520,13 @@ let selected = -1;
 let currentResults = [];
 let activeResIndex = 0;
 
+// Shockwave focus
+const wave = {
+  active: false,
+  t: 0,
+  origin: new THREE.Vector3()
+};
+
 // ---------- Cosine similarity + top-K neighbors ----------
 function topKNeighbors(idx, K) {
   const v = vectors[idx];
@@ -628,6 +642,9 @@ function setSelected(i) {
     showHalo(selected, true);
     populatePanel(selected);
     focusNode(selected);
+    wave.origin.set(pos[selected*3+0], pos[selected*3+1], pos[selected*3+2]);
+    wave.t = 0;
+    wave.active = true;
   } else {
     halo.visible = false;
     clearPanel();
@@ -1095,8 +1112,13 @@ function updateNodes(dt, t) {
   const k = CFG.SPRING_K;
   const damp = CFG.DAMPING;
   const boostEase = 1.0 - Math.exp(-dt * 10.0);
+  const waveFront = wave.active ? (wave.t * CFG.WAVE_SPEED) : -1;
 
   const cf = parseInt(clusterSel.value, 10);
+  const selX = (selected >= 0) ? pos[selected*3+0] : 0;
+  const selY = (selected >= 0) ? pos[selected*3+1] : 0;
+  const selZ = (selected >= 0) ? pos[selected*3+2] : 0;
+
   for (let i=0; i<CFG.N; i++) {
     if (cf >= 0) {
       const match = (clusterId[i] === cf);
@@ -1119,7 +1141,29 @@ function updateNodes(dt, t) {
     vv.addScaledVector(tmp, dt);
     pp.addScaledVector(vv, dt);
 
-    aBoost[i] += (aBoostTarget[i] - aBoost[i]) * boostEase;
+    aBoostBase[i] += (aBoostTarget[i] - aBoostBase[i]) * boostEase;
+
+    if (selected >= 0 && i !== selected) {
+      const dx = pp.x - selX;
+      const dy = pp.y - selY;
+      const dz = pp.z - selZ;
+      const d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      const focus = 1.0 - clamp01((d - 6) / CFG.FOCUS_RADIUS);
+      aAlpha[i] *= (0.28 + 0.72 * focus);
+    }
+
+    let waveBoost = 0;
+    if (wave.active) {
+      const dx = pp.x - wave.origin.x;
+      const dy = pp.y - wave.origin.y;
+      const dz = pp.z - wave.origin.z;
+      const d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      const diff = Math.abs(d - waveFront);
+      if (diff < CFG.WAVE_WIDTH) {
+        waveBoost = (1.0 - diff / CFG.WAVE_WIDTH) * CFG.WAVE_STRENGTH;
+      }
+    }
+    aBoost[i] = aBoostBase[i] + waveBoost;
 
     pos[i*3+0] = pp.x;
     pos[i*3+1] = pp.y;
@@ -1163,6 +1207,11 @@ function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(0.03, clock.getDelta());
   const t = clock.elapsedTime;
+
+  if (wave.active) {
+    wave.t += dt;
+    if (wave.t * CFG.WAVE_SPEED > CFG.WAVE_MAX_DIST) wave.active = false;
+  }
 
   if (needsPick) {
     needsPick = false;
