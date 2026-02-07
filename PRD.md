@@ -13,10 +13,10 @@
 CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interactive 3D semantic memory space. Users can visually explore past conversations, perform hybrid semantic+keyword search, and inject selected context into new AI chats via Model Context Protocol (MCP).
 
 ### 1.2 Current Status
-- **Frontend:** 95% complete - Fully functional 3D visualization with hardcoded sample data
-- **Backend:** 0% complete - Empty files, requires full implementation
+- **Frontend:** 95% complete - Fully functional 3D visualization with client-side generated sample data (vanilla HTML/CSS/JS + Three.js)
+- **Backend:** 30% complete - Database models, parsers, and service layer implemented; API endpoints in progress
 - **MCP Layer:** 0% complete - Empty files, requires full implementation
-- **Overall Completion:** ~20%
+- **Overall Completion:** ~35%
 
 ### 1.3 Project Goals
 1. Build production-ready backend API with embedding generation and hybrid search
@@ -31,12 +31,15 @@ CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interac
 
 ### 2.1 System Components
 ```
-┌─────────────────┐
-│   Frontend      │
-│  (Next.js +     │
-│   Three.js)     │
-└────────┬────────┘
-         │ REST API
+┌─────────────────────────────────┐
+│   Frontend (Browser)            │
+│  • HTML/CSS/JavaScript          │
+│  • Three.js (WebGL)             │
+│  • OrbitControls + PointerLock  │
+│  • Client-side animation        │
+│  • Search UI + filtering        │
+└────────┬────────────────────────┘
+         │ REST API (fetch)
          ▼
 ┌─────────────────┐
 │   Backend       │
@@ -61,13 +64,22 @@ CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interac
 ```
 
 ### 2.2 Tech Stack
-- **Frontend:** Next.js 16, React 19, Three.js, React Three Fiber
+- **Frontend:** Vanilla HTML/CSS/JavaScript, Three.js (WebGL), OrbitControls + PointerLockControls
 - **Backend:** FastAPI, SQLAlchemy, BeautifulSoup4, OpenAI SDK
 - **Database:** SQLite (metadata + 3D coords) + OpenAI Vector Store (retrieval index)
 - **Embeddings:** OpenAI `text-embedding-3-small` (single embedding source)
 - **Dimension Reduction:** UMAP
 - **Clustering:** K-means
 - **MCP:** Anthropic MCP SDK (Python)
+
+**Frontend Architecture Details:**
+- Single-page web app - everything runs in the browser
+- Three.js for 3D scene rendering (points, edges, starfield)
+- Shader-based point rendering with custom vertex/fragment shaders
+- Two camera modes: Orbit (mouse rotate/pan/zoom) and Fly (FPS-style navigation)
+- Client-side "alive" animation using spring physics and flow fields
+- Screen-space picking for hover/click detection
+- Local fake embeddings for development (to be replaced with backend API calls)
 
 ---
 
@@ -459,135 +471,150 @@ CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interac
 
 ## PHASE 4: Frontend Integration
 
-### Task 4.1: API Client Setup
-**Priority:** P0 (Critical)  
-**Estimated Time:** 2 hours  
+### Task 4.1: Backend API Integration
+**Priority:** P0 (Critical)
+**Estimated Time:** 3 hours
 **Owner:** Frontend Team
 
 #### Sub-tasks:
-- [ ] **4.1.1** Create `frontend/chat-memory-visualizer/lib/api.ts`:
-  - Set up axios or fetch wrapper
+- [ ] **4.1.1** Create `frontend/src/api.js` module:
+  - Add fetch-based API wrapper functions
   - Configure base URL (http://localhost:8000)
   - Add error handling and retry logic
-  - Type definitions for all API responses
+  - JSDoc comments for all API functions
 
-- [ ] **4.1.2** Define API functions:
-  ```typescript
-  export async function fetchChats(): Promise<ChatNode[]>
-  export async function searchChats(query: string): Promise<ChatNode[]>
-  export async function fetchChatDetails(id: string): Promise<ChatDetail>
-  export async function ingestChatFile(file: File): Promise<IngestResponse>
+- [ ] **4.1.2** Implement API functions:
+  ```javascript
+  // Fetch all conversations with 3D coordinates
+  async function fetchChats() { /* GET /api/chats */ }
+
+  // Search conversations using backend hybrid search
+  async function searchChats(query, limit = 30) { /* POST /api/search */ }
+
+  // Get full conversation details including messages
+  async function fetchChatDetails(id) { /* GET /api/chats/{id} */ }
+
+  // Upload HTML file for ingestion
+  async function uploadChatFile(file) { /* POST /api/ingest */ }
   ```
 
-- [ ] **4.1.3** Add loading and error states:
-  - Create React hooks for API calls
-  - `useChats()`, `useSearch()`, `useChatDetails()`
+- [ ] **4.1.3** Add loading states to UI:
+  - Add loading spinner/indicator during API calls
+  - Show loading message in results panel
+  - Disable interactions while loading
 
 **Acceptance Criteria:**
 - ✅ API client successfully calls backend endpoints
-- ✅ TypeScript types match backend schemas
-- ✅ Errors are caught and handled gracefully
+- ✅ Errors are caught and displayed to user
+- ✅ Loading states prevent user confusion
 
 ---
 
-### Task 4.2: Dynamic Data Loading
-**Priority:** P0 (Critical)  
-**Estimated Time:** 3 hours  
+### Task 4.2: Replace Fake Data with Backend Data
+**Priority:** P0 (Critical)
+**Estimated Time:** 4 hours
 **Owner:** Frontend Team
 
 #### Sub-tasks:
-- [ ] **4.2.1** Update `memory-visualizer.tsx`:
-  - Remove hardcoded `SAMPLE_CHATS` array
-  - Replace with `useChats()` hook
-  - Fetch data from `GET /api/chats` on component mount
-  - Show loading spinner while fetching
-  - Handle empty state (no chats yet)
+- [ ] **4.2.1** Update `frontend/src/main.js` data initialization:
+  - Remove fake data generation (lines ~150-286 in current implementation)
+  - Replace with `fetchChats()` API call on page load
+  - Map backend response to frontend data structures:
+    - `nodes[]` array from conversations
+    - `vectors[]` from embedding_384d (or skip if using backend search)
+    - `clusterId[]` from cluster_id
+    - `timestamps[]` from created_at
+    - `anchors[]` and `pos[]` from vector_3d (start_x, start_y, start_z → end_x, end_y, end_z)
+  - Handle empty state (no conversations yet)
 
-- [ ] **4.2.2** Update `search-bar.tsx`:
-  - Replace local filtering with API call
-  - Call `POST /api/search` on search input (debounced)
-  - Update parent component with search results
+- [ ] **4.2.2** Update search to use backend:
+  - Modify `searchNodes()` function (lines 806-820)
+  - Replace local `embedText()` and cosine similarity with `searchChats()` API call
+  - Keep client-side cluster filtering or move to backend
+  - Update results display with backend scores
 
-- [ ] **4.2.3** Update `chat-info-panel.tsx`:
-  - Fetch full chat details on selection
-  - Call `GET /api/chats/{id}` to get messages
-  - Display all messages in expandable view
+- [ ] **4.2.3** Update panel to show full conversation details:
+  - Modify `populatePanel()` function (lines 707-728)
+  - Call `fetchChatDetails(id)` when node is selected
+  - Display conversation messages in snippet area
+  - Show message count, timestamps, and metadata
 
-- [ ] **4.2.4** Add error boundaries:
-  - Create `ErrorBoundary` component
-  - Wrap main app to catch React errors
-  - Display user-friendly error messages
+- [ ] **4.2.4** Add error handling:
+  - Show error messages in UI when API calls fail
+  - Add retry button for failed requests
+  - Log errors to console for debugging
 
 **Acceptance Criteria:**
-- ✅ 3D visualization renders with backend data
-- ✅ No hardcoded sample data remains
-- ✅ Loading states are smooth and intuitive
-- ✅ Errors display helpful messages
+- ✅ 3D visualization renders with backend data (no fake data)
+- ✅ Points are positioned using backend-generated 3D coordinates
+- ✅ Search uses backend hybrid retrieval (OpenAI Vector Store)
+- ✅ Panel displays real conversation content
+- ✅ Errors are handled gracefully
 
 ---
 
 ### Task 4.3: File Upload UI
-**Priority:** P1 (High)  
-**Estimated Time:** 3 hours  
+**Priority:** P1 (High)
+**Estimated Time:** 3 hours
 **Owner:** Frontend Team
 
 #### Sub-tasks:
-- [ ] **4.3.1** Create `upload-dialog.tsx` component:
-  - Modal dialog with file input
-  - Drag-and-drop zone for HTML files
-  - Multiple file selection support
+- [ ] **4.3.1** Add upload button to top bar:
+  - Insert button in `.topbar` div next to existing controls
+  - Style consistently with existing pill design
+  - Show upload icon/label
+
+- [ ] **4.3.2** Create upload modal/dialog:
+  - Add hidden modal container to `index.html`
+  - Implement drag-and-drop zone for HTML files
+  - Add file input for click-to-upload
   - File validation (HTML only, max 10MB)
+  - Show selected files list before upload
 
-- [ ] **4.3.2** Add upload progress indicator:
+- [ ] **4.3.3** Implement upload progress:
   - Progress bar for each file
-  - Success/error indicators
-  - Show summary when upload completes
-
-- [ ] **4.3.3** Add upload button to main UI:
-  - Top-right corner "Upload Chats" button
-  - Opens upload dialog
-  - After successful upload, refresh chat list
+  - Success/error indicators per file
+  - Show upload summary when complete
+  - Automatically refresh visualization after successful upload
 
 - [ ] **4.3.4** Handle upload errors:
   - Display error messages from backend
   - Allow retry for failed uploads
+  - Clear upload state on close
 
 **Acceptance Criteria:**
 - ✅ Users can upload HTML files via drag-drop or file picker
 - ✅ Upload progress is visible
-- ✅ New chats appear in 3D scene after upload
+- ✅ New chats appear in 3D scene after upload (automatic refresh)
 - ✅ Error messages are clear and actionable
 
 ---
 
 ### Task 4.4: UI Polish & Enhancements
-**Priority:** P2 (Medium)  
-**Estimated Time:** 4 hours  
+**Priority:** P2 (Medium)
+**Estimated Time:** 3 hours
 **Owner:** Frontend Team
 
 #### Sub-tasks:
-- [ ] **4.4.1** Add loading skeletons:
-  - Skeleton UI for chat list during initial load
-  - Shimmer effect for smooth UX
+- [ ] **4.4.1** Add loading states:
+  - Show loading spinner during initial data fetch
+  - Add "Loading..." message in search results
+  - Disable UI controls while loading
 
-- [ ] **4.4.2** Add empty state illustrations:
-  - When no chats exist, show "Upload your first chat" message
-  - Add helpful instructions
+- [ ] **4.4.2** Add empty state:
+  - When no chats exist, show centered message
+  - "No memories yet. Upload your first chat to get started."
+  - Show upload button prominently
 
 - [ ] **4.4.3** Improve search UX:
   - Show "Searching..." indicator during API call
-  - Highlight search results in 3D scene (different color)
-  - Add "Clear search" button
+  - Debounce search input (already implemented, verify with backend)
+  - Add "No results" message when search returns empty
 
-- [ ] **4.4.4** Add cluster legend:
-  - Show color-coded cluster list in UI
-  - Allow filtering by cluster (click to toggle)
-
-- [ ] **4.4.5** Add statistics panel:
-  - Total conversations count
-  - Total messages count
-  - Date range of conversations
-  - Most common topics (word cloud)
+- [ ] **4.4.4** Add statistics to UI:
+  - Total conversations count badge
+  - Show in top bar or legend
+  - Update after upload
 
 **Acceptance Criteria:**
 - ✅ UI feels polished and professional
@@ -1064,7 +1091,90 @@ All → Backend must be completed first
 
 ## 9. Appendix
 
-### 9.1 Key Design Decisions
+### 9.1 Frontend Implementation Details
+
+**Current Frontend Architecture:**
+
+The frontend is a single-page web application built with vanilla HTML/CSS/JavaScript and Three.js. All code runs in the browser with no server-side rendering.
+
+**Key Components:**
+
+1. **3D Visualization (`main.js`)**
+   - **Points Rendering:** Uses `THREE.Points` with custom shader material
+   - **Attributes per point:** position, color (cluster-based), alpha (for filtering), boost (for hover/select)
+   - **Shader-based rendering:** Vertex shader handles point size attenuation; fragment shader applies sprite texture and fog
+   - **Animation:** Spring physics pulls points toward anchor positions; flow field adds "alive" drifting motion
+   - **Edges:** Dynamic `LineSegments` showing K-nearest neighbors based on cosine similarity
+
+2. **Camera Controls**
+   - **Orbit Mode:** `OrbitControls` for mouse rotate/pan/zoom + keyboard navigation (WASD/QE/RF)
+   - **Fly Mode:** `PointerLockControls` for FPS-style navigation with WASD movement
+
+3. **Interaction**
+   - **Hover/Click Detection:** Screen-space picking (projects all points to screen coordinates, finds nearest to cursor)
+   - **Selection:** Click selects node → shows details in right panel + increases point size
+   - **Focus:** Press F to animate camera to selected node
+
+4. **Search**
+   - Currently uses client-side fake embeddings (`embedText()` function)
+   - Computes cosine similarity between query vector and all node vectors
+   - **To be replaced:** Backend API call to `POST /api/search` with hybrid retrieval
+
+5. **UI Elements**
+   - Top bar: Search input, cluster filter dropdown, point size slider, edges (K) slider
+   - Right panel: Selected node details (title, cluster, time, tags, snippet, neighbors)
+   - Bottom legend: Keyboard shortcuts reference
+   - Help overlay: Detailed controls (press `?`)
+
+**Data Structures Expected from Backend:**
+
+The frontend currently generates fake data but expects this structure from `GET /api/chats`:
+
+```javascript
+{
+  "conversations": [
+    {
+      "id": "uuid-string",
+      "title": "Conversation title",
+      "summary": "2-3 sentence summary",
+      "topics": ["tag1", "tag2", "tag3"],
+      "cluster_id": 0,           // 0 to N_CLUSTERS-1
+      "cluster_name": "coding",  // human-readable cluster name
+      "message_count": 12,
+      "created_at": "2026-01-15T10:30:00Z",
+
+      // 3D coordinates (UMAP-reduced)
+      "start_x": 0, "start_y": 0, "start_z": 0,  // anchor/arrow start (origin)
+      "end_x": 2.5, "end_y": -1.2, "end_z": 3.1, // anchor/arrow end (3D position)
+      "magnitude": 4.2,  // optional, for visualization
+
+      // Optional: for client-side similarity if not using backend search
+      "embedding_384d": [0.1, 0.2, ...],  // 384-dim vector (only if needed)
+    }
+  ],
+  "total": 100,
+  "page": 1
+}
+```
+
+**Frontend Integration Requirements:**
+
+1. Replace fake data generation with `fetchChats()` API call
+2. Map backend response to frontend arrays (`nodes[]`, `pos[]`, `anchors[]`, `clusterId[]`)
+3. Update search to call backend `POST /api/search` instead of local similarity
+4. Add upload UI to call `POST /api/ingest` for new conversations
+5. Fetch full conversation details with `GET /api/chats/{id}` when node is selected
+
+**Animation Details:**
+
+- **Spring Physics:** Each point has position, velocity, and anchor position. Spring force pulls toward anchor with stiffness `k` and damping.
+- **Flow Field:** 3D noise function (sin/cos) adds directional drift to make visualization feel "alive"
+- **Local Gravity:** When a node is selected, nearby nodes are slightly attracted to it
+- **Edge Rendering:** K-nearest neighbors are connected with lines, faded by distance and similarity
+
+---
+
+### 9.2 Key Design Decisions
 
 **Why OpenAI embeddings as the single embedding source?**
 - Ensures consistent semantic space for both retrieval and visualization
@@ -1090,19 +1200,34 @@ All → Backend must be completed first
 - Less infra to build for hackathon; faster to reach an impressive demo
 - Supports metadata-based filtering via file attributes
 
-### 9.2 Reference Architecture Diagram
+**Why Vanilla JS instead of Next.js/React?**
+- Simpler deployment: single HTML file + static assets (no build step, no Node.js server)
+- Faster iteration: direct DOM manipulation, no virtual DOM overhead
+- Better for 3D WebGL: Three.js works naturally without React wrappers
+- Hackathon-friendly: easier to debug, fewer dependencies
+- Can migrate to React later if multi-page app or SSR is needed
+
+### 9.3 Reference Architecture Diagram
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         USER INTERFACE                          │
 │  ┌──────────────────────────────────────────────────────────┐  │
-│  │         Next.js Frontend (Port 3000)                      │  │
+│  │    Browser (Static HTML/CSS/JS - frontend/index.html)    │  │
 │  │  ┌────────────┐  ┌─────────────┐  ┌─────────────────┐   │  │
-│  │  │ 3D Scene   │  │ Search Bar  │  │  Upload Dialog  │   │  │
-│  │  │ (Three.js) │  │             │  │                 │   │  │
+│  │  │ 3D Scene   │  │ Search UI   │  │  Upload Modal   │   │  │
+│  │  │ (Three.js) │  │ (DOM)       │  │  (DOM)          │   │  │
+│  │  │ WebGL      │  │             │  │                 │   │  │
 │  │  └────────────┘  └─────────────┘  └─────────────────┘   │  │
+│  │                                                           │  │
+│  │  Frontend Logic (main.js):                               │  │
+│  │  • OrbitControls + PointerLockControls                   │  │
+│  │  • Shader-based point rendering                          │  │
+│  │  • Spring physics + flow field animation                 │  │
+│  │  • Screen-space picking (hover/click)                    │  │
+│  │  • API integration (fetch)                               │  │
 │  └──────────────────────────┬───────────────────────────────┘  │
 └───────────────────────────────┼───────────────────────────────┘
-                                │ REST API
+                                │ REST API (fetch)
 ┌───────────────────────────────┼───────────────────────────────┐
 │                               ▼                                 │
 │              FastAPI Backend (Port 8000)                        │
@@ -1113,10 +1238,10 @@ All → Backend must be completed first
 │         │              │               │                       │
 │  ┌──────▼──────────────▼───────────────▼──────┐              │
 │  │           Service Layer                     │              │
-│  │  • HTML Parser                              │              │
+│  │  • HTML Parser (ChatGPT/Claude)             │              │
 │  │  • Embedder (OpenAI embeddings)             │              │
-│  │  • Summarizer                               │              │
-│  │  • UMAP Reducer                             │              │
+│  │  • Summarizer (extractive/LLM)              │              │
+│  │  • UMAP Reducer (384D → 3D)                 │              │
 │  │  • K-means Clusterer                        │              │
 │  │  • Vector Store Indexing (OpenAI)           │              │
 │  │  • Vector Store Search (OpenAI)             │              │
@@ -1125,9 +1250,10 @@ All → Backend must be completed first
 │         │                              │                       │
 │  ┌──────▼──────────┐          ┌──────────────────────┐       │
 │  │   SQLite DB     │          │ OpenAI Vector Store  │       │
-│  │  • conversations│          │  • chunks + index    │       │
-│  │  • messages     │          │  • hybrid retrieval  │       │
+│  │  • conversations│          │  • file chunks       │       │
+│  │  • messages     │          │  • hybrid index      │       │
 │  │  • embeddings   │          │  • re-ranking        │       │
+│  │  • 3D coords    │          │  • metadata filter   │       │
 │  └─────────────────┘          └──────────────────────┘       │
 └───────────────────────────────┬─────────────────────────────┘
                                 │
@@ -1149,7 +1275,7 @@ All → Backend must be completed first
 └───────────────────────────────────────────────┘
 ```
 
-### 9.3 Example API Responses
+### 9.4 Example API Responses
 
 **GET /api/chats:**
 ```json
@@ -1162,18 +1288,26 @@ All → Backend must be completed first
       "topics": ["React", "JavaScript", "debugging"],
       "cluster_id": 1,
       "cluster_name": "coding",
-      "color": "#9333ea",
       "message_count": 12,
       "created_at": "2026-01-15T10:30:00Z",
-      "start_x": 0, "start_y": 0, "start_z": 0,
-      "end_x": 2.5, "end_y": -1.2, "end_z": 3.1,
+      "updated_at": "2026-01-15T11:45:00Z",
+
+      "start_x": 0.0,
+      "start_y": 0.0,
+      "start_z": 0.0,
+      "end_x": 2.5,
+      "end_y": -1.2,
+      "end_z": 3.1,
       "magnitude": 4.2
     }
   ],
   "total": 1,
-  "page": 1
+  "page": 1,
+  "per_page": 100
 }
 ```
+
+**Note:** The frontend uses `end_x/y/z` as the 3D position (anchor point) for each conversation node. The `start_x/y/z` are typically at origin (0,0,0) for visualization as vector arrows (optional use).
 
 **POST /api/search:**
 ```json
