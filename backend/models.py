@@ -38,7 +38,10 @@ class Conversation(Base):
     cluster_id = Column(Integer, nullable=True, index=True)
     cluster_name = Column(String(100), nullable=True)
     message_count = Column(Integer, default=0)
-    
+
+    # OpenAI Vector Store integration
+    openai_file_id = Column(String(100), nullable=True, index=True)  # OpenAI file ID for vector store
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

@@ -28,7 +28,7 @@ from backend.schemas import HealthResponse
 # Import routers
 from backend.api.ingest import router as ingest_router
 from backend.api.chats import router as chats_router
-# from backend.api.search import router as search_router  # Phase 3
+from backend.api.search import router as search_router
 
 
 @asynccontextmanager
@@ -151,7 +151,7 @@ async def root():
 # Include routers
 app.include_router(ingest_router)
 app.include_router(chats_router)
-# app.include_router(search_router)  # Phase 3
+app.include_router(search_router)
 
 
 if __name__ == "__main__":

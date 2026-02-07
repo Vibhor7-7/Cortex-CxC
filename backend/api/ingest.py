@@ -18,6 +18,7 @@ from backend.services.summarizer import summarize_conversation
 from backend.services.embedder import generate_embedding, prepare_text_for_embedding
 from backend.services.dimensionality_reducer import reduce_embeddings, normalize_coordinates
 from backend.services.clusterer import cluster_conversations
+from backend.services.openai_vector_store import upload_conversation_to_vector_store
 import uuid
 
 
@@ -167,8 +168,39 @@ async def ingest_single_chat(
                 magnitude=1.0
             )
             db.add(embedding)
-            
+
             db.commit()
+
+        # Upload conversation to OpenAI Vector Store
+        try:
+            print(f"Uploading conversation {conversation_id} to vector store...")
+            conversation_data = {
+                'title': normalized['title'],
+                'summary': summary,
+                'topics': topics,
+                'messages': normalized['messages']
+            }
+            file_id, status = await upload_conversation_to_vector_store(
+                conversation_id=conversation_id,
+                conversation_data=conversation_data,
+                poll_completion=True
+            )
+
+            # Update conversation with file_id
+            if file_id and status == "completed":
+                with get_db_context() as db:
+                    conversation = db.query(Conversation).filter(
+                        Conversation.id == conversation_id
+                    ).first()
+                    if conversation:
+                        conversation.openai_file_id = file_id
+                        db.commit()
+                print(f"✅ Conversation uploaded to vector store: {file_id}")
+            else:
+                print(f"⚠️ Vector store upload status: {status}")
+        except Exception as e:
+            # Don't fail ingestion if vector store upload fails
+            print(f"Warning: Vector store upload failed: {e}")
 
         # Trigger automatic reprocessing if requested
         if auto_reprocess:

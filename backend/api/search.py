@@ -1,86 +1,178 @@
-from __future__ import annotations
+"""
+Search API endpoint.
 
+Provides hybrid semantic + keyword search using OpenAI Vector Store.
+"""
+
+import time
+from typing import List, Dict, Optional
 from fastapi import APIRouter, HTTPException
-
-from backend.api.chats import _to_conversation_out
-from backend.core.openai_client import get_openai_client
-from backend.db import get_db_session
-from backend.models import Conversation, OpenAIFile
-from backend.schemas import SearchRequest, SearchResponse, SearchResult
-from backend.services.openai_vector_store import (
-	extract_conversation_id,
-	get_or_create_vector_store_id,
-	search_vector_store,
-)
+from sqlalchemy import or_
+from backend.database import get_db_context
+from backend.models import Conversation, Embedding
+from backend.schemas import SearchRequest, SearchResponse, SearchResultItem
+from backend.services.openai_vector_store import search_vector_store
 
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
 
-@router.post("", response_model=SearchResponse)
-def search(payload: SearchRequest) -> SearchResponse:
-	query = payload.query.strip()
-	if not query:
-		raise HTTPException(status_code=422, detail="query must not be empty")
+@router.post("/", response_model=SearchResponse)
+async def search_conversations(request: SearchRequest):
+    """
+    Search conversations using hybrid retrieval.
 
-	client = get_openai_client()
-	vector_store_id = get_or_create_vector_store_id(client)
+    Uses OpenAI Vector Store for hybrid semantic + keyword search, then
+    fetches full conversation metadata from the database.
 
-	results = search_vector_store(
-		client,
-		vector_store_id=vector_store_id,
-		query=query,
-		limit=payload.limit,
-	)
+    Args:
+        request: SearchRequest with query, limit, and filters
 
-	conversation_ids: list[str] = []
-	scores_by_id: dict[str, float] = {}
-	raw_by_id: dict[str, dict] = {}
+    Returns:
+        SearchResponse with matching conversations and metadata
 
-	for r in results:
-		conv_id = extract_conversation_id(r)
-		if not conv_id:
-			continue
-		if conv_id not in scores_by_id:
-			conversation_ids.append(conv_id)
-		score = float(r.get("score") or 0.0)
-		scores_by_id[conv_id] = max(scores_by_id.get(conv_id, 0.0), score)
-		raw_by_id[conv_id] = r
+    Process:
+        1. Search OpenAI Vector Store with query
+        2. Extract file_ids from search results
+        3. Map file_ids to conversation_ids via database
+        4. Fetch full conversation metadata
+        5. Apply additional filters (cluster, topics)
+        6. Aggregate scores and deduplicate
+        7. Return ranked results with 3D coordinates
+    """
+    start_time = time.time()
 
-	with get_db_session() as db:
-		conversations = db.query(Conversation).filter(Conversation.id.in_(conversation_ids)).all()
-		by_id = {c.id: c for c in conversations}
+    try:
+        # Step 1: Search vector store
+        # Note: The vector store search uses its own hybrid ranking
+        vector_results = await search_vector_store(
+            query=request.query,
+            max_results=request.limit * 3,  # Get more results for filtering
+            rewrite_query=True,
+            score_threshold=0.3  # Filter low-quality results
+        )
 
-		final_results: list[SearchResult] = []
-		for conv_id in conversation_ids:
-			conv = by_id.get(conv_id)
-			if not conv:
-				continue
-			final_results.append(
-				SearchResult(
-					conversation=_to_conversation_out(conv),
-					score=float(scores_by_id.get(conv_id, 0.0)),
-					raw=raw_by_id.get(conv_id),
-				)
-			)
+        if not vector_results:
+            # No results from vector store
+            search_time = (time.time() - start_time) * 1000
+            return SearchResponse(
+                query=request.query,
+                results=[],
+                total_results=0,
+                search_time_ms=search_time
+            )
 
-		# Fallback mapping via stored OpenAI file ids if attributes aren't present
-		if not final_results and results:
-			file_ids = [r.get("file_id") for r in results if isinstance(r.get("file_id"), str)]
-			if file_ids:
-				mappings = db.query(OpenAIFile).filter(OpenAIFile.file_id.in_(file_ids)).all()
-				mapped_ids = [m.conversation_id for m in mappings]
-				convs = db.query(Conversation).filter(Conversation.id.in_(mapped_ids)).all()
-				by_id2 = {c.id: c for c in convs}
-				for m in mappings:
-					conv = by_id2.get(m.conversation_id)
-					if conv:
-						final_results.append(
-							SearchResult(
-								conversation=_to_conversation_out(conv),
-								score=0.0,
-								raw=None,
-							)
-						)
+        # Step 2: Extract file IDs and aggregate scores
+        file_scores = {}  # file_id -> aggregated score
+        file_chunks = {}   # file_id -> list of content chunks
 
-		return SearchResponse(query=query, results=final_results)
+        for result in vector_results:
+            file_id = result.get('file_id')
+            score = result.get('score', 0.0)
+            content = result.get('content', '')
+
+            if file_id:
+                if file_id not in file_scores:
+                    file_scores[file_id] = 0.0
+                    file_chunks[file_id] = []
+
+                # Aggregate scores (take max score across chunks)
+                file_scores[file_id] = max(file_scores[file_id], score)
+                if content:
+                    file_chunks[file_id].append(content)
+
+        # Step 3: Map file_ids to conversation_ids and fetch metadata
+        with get_db_context() as db:
+            # Get conversations with matching file IDs
+            conversations = db.query(Conversation).join(Embedding).filter(
+                Conversation.openai_file_id.in_(list(file_scores.keys()))
+            ).all()
+
+            # Build results list
+            results = []
+            for conv in conversations:
+                # Get score for this conversation
+                score = file_scores.get(conv.openai_file_id, 0.0)
+
+                # Apply filters
+                if request.cluster_filter is not None:
+                    if conv.cluster_id != request.cluster_filter:
+                        continue
+
+                if request.topic_filter:
+                    # Check if any requested topic is in conversation topics
+                    conv_topics = set(conv.topics or [])
+                    if not any(topic in conv_topics for topic in request.topic_filter):
+                        continue
+
+                # Get embedding for 3D coordinates
+                embedding = conv.embedding
+
+                # Get message preview (first chunk)
+                chunks = file_chunks.get(conv.openai_file_id, [])
+                preview = chunks[0][:200] + "..." if chunks else None
+
+                # Create result item
+                result_item = SearchResultItem(
+                    conversation_id=conv.id,
+                    title=conv.title,
+                    summary=conv.summary or "",
+                    topics=conv.topics or [],
+                    message_count=conv.message_count,
+                    created_at=conv.created_at,
+                    start_x=embedding.start_x if embedding else 0.0,
+                    start_y=embedding.start_y if embedding else 0.0,
+                    start_z=embedding.start_z if embedding else 0.0,
+                    end_x=embedding.end_x if embedding else 0.0,
+                    end_y=embedding.end_y if embedding else 0.0,
+                    end_z=embedding.end_z if embedding else 0.0,
+                    magnitude=embedding.magnitude if embedding else 1.0,
+                    cluster_id=conv.cluster_id,
+                    cluster_name=conv.cluster_name,
+                    score=score,
+                    message_preview=preview
+                )
+
+                results.append(result_item)
+
+            # Sort by score (descending)
+            results.sort(key=lambda x: x.score, reverse=True)
+
+            # Limit results
+            results = results[:request.limit]
+
+            search_time = (time.time() - start_time) * 1000
+
+            return SearchResponse(
+                query=request.query,
+                results=results,
+                total_results=len(results),
+                search_time_ms=search_time
+            )
+
+    except Exception as e:
+        search_time = (time.time() - start_time) * 1000
+        raise HTTPException(
+            status_code=500,
+            detail=f"Search failed: {str(e)}"
+        )
+
+
+@router.get("/stats")
+async def get_search_stats():
+    """
+    Get vector store statistics.
+
+    Returns:
+        Dictionary with vector store stats including file count
+    """
+    try:
+        from backend.services.openai_vector_store import get_vector_store_service
+        service = get_vector_store_service()
+        stats = service.get_vector_store_stats()
+        return stats
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get stats: {str(e)}"
+        )

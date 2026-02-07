@@ -5,7 +5,7 @@ Provides endpoints for retrieving conversation data.
 """
 
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from backend.database import get_db_context
@@ -24,15 +24,21 @@ router = APIRouter(prefix="/api/chats", tags=["chats"])
 
 @router.get("/", response_model=List[ConversationResponse])
 async def get_all_conversations(
+    response: Response,
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0)
 ):
     """
     Get all conversations with pagination.
-    
+
     Returns conversation metadata without full message history.
     Use GET /api/chats/{id} to get full conversation details.
+
+    Cache-Control: max-age=60 (60 seconds)
     """
+    # Add caching header - cache for 60 seconds
+    response.headers["Cache-Control"] = "public, max-age=60"
+
     with get_db_context() as db:
         conversations = (
             db.query(Conversation)
@@ -41,7 +47,7 @@ async def get_all_conversations(
             .offset(offset)
             .all()
         )
-        
+
         return [
             ConversationResponse.model_validate(conv)
             for conv in conversations
@@ -102,16 +108,21 @@ async def get_visualization_data():
 
 
 @router.get("/{conversation_id}", response_model=ConversationDetailResponse)
-async def get_conversation_details(conversation_id: str):
+async def get_conversation_details(conversation_id: str, response: Response):
     """
     Get full conversation details including all messages.
-    
+
     Args:
         conversation_id: UUID of the conversation
-        
+
     Returns:
         Full conversation with all messages in sequence
+
+    Cache-Control: max-age=300 (5 minutes)
     """
+    # Add caching header - cache for 5 minutes (300 seconds)
+    response.headers["Cache-Control"] = "public, max-age=300"
+
     with get_db_context() as db:
         # Get conversation
         conversation = db.query(Conversation).filter(
