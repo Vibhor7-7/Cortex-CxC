@@ -7,9 +7,9 @@ as an alternative to the OpenAI GPT-4o-mini approach used in backend/services/su
 Features:
 - Handles large context windows (RAG pipeline style)
 - Automatic chunking for texts >1024 tokens
-- Generates detailed summaries (100-256 tokens)
+- Generates short summaries (~50 words)
 - Smart device detection (CUDA/MPS/CPU)
-- Optimized for long-form conversation summarization
+- Optimized for fast paragraph summarization
 
 Note: The main project uses OpenAI for summarization. This is a standalone
 test/demo script for exploring local summarization alternatives.
@@ -63,8 +63,9 @@ def create_summarization_pipeline():
                 model = model.to(device)
             # device -1 means CPU, no need to move
 
+        model.eval()
         print("Model loaded successfully!\n")
-        return model, tokenizer
+        return model, tokenizer, device
 
     except Exception as e:
         print(f"Error loading model: {e}")
@@ -102,11 +103,11 @@ def chunk_text(text, tokenizer, max_chunk_tokens=1024, overlap=100):
     return chunks
 
 
-def summarize(text, model, tokenizer, device, max_length=256, min_length=100):
+def summarize(text, model, tokenizer, device, target_words=50):
     """
     Summarize text using the Pegasus model.
 
-    Designed for large context windows (RAG pipeline style) with detailed summaries.
+    Designed for large context windows (RAG pipeline style) with short summaries.
     For very large texts (>1024 tokens), chunks the text and summarizes each chunk,
     then creates a final summary.
 
@@ -115,9 +116,12 @@ def summarize(text, model, tokenizer, device, max_length=256, min_length=100):
         model: Pegasus model
         tokenizer: Pegasus tokenizer
         device: Device (cuda/mps/cpu)
-        max_length: Maximum summary length in tokens (default 256 for detailed summaries)
-        min_length: Minimum summary length in tokens (default 100)
+        target_words: Approximate target length in words (default 50)
     """
+    # Rough token length heuristic for ~50 words.
+    max_length = max(32, int(target_words * 1.4))
+    min_length = max(16, int(target_words * 0.6))
+
     # Check if text needs chunking
     token_count = len(tokenizer.encode(text, add_special_tokens=False))
 
@@ -137,12 +141,12 @@ def summarize(text, model, tokenizer, device, max_length=256, min_length=100):
             elif device == "mps":
                 inputs = {k: v.to("mps") for k, v in inputs.items()}
 
-            with torch.no_grad():
+            with torch.inference_mode():
                 summary_ids = model.generate(
                     inputs["input_ids"],
-                    max_length=128,  # Shorter for chunk summaries
-                    min_length=50,
-                    num_beams=4,
+                    max_length=max(28, int(target_words * 0.9)),
+                    min_length=max(16, int(target_words * 0.4)),
+                    num_beams=2,
                     early_stopping=True,
                     no_repeat_ngram_size=3,
                     length_penalty=1.0
@@ -164,151 +168,54 @@ def summarize(text, model, tokenizer, device, max_length=256, min_length=100):
     elif device == "mps":
         inputs = {k: v.to("mps") for k, v in inputs.items()}
 
-    # Generate summary with parameters optimized for longer, detailed summaries
-    with torch.no_grad():
+    # Generate summary with parameters optimized for speed and short output
+    with torch.inference_mode():
         summary_ids = model.generate(
             inputs["input_ids"],
             max_length=max_length,
             min_length=min_length,
-            num_beams=6,  # More beams for better quality on longer summaries
+            num_beams=2,  # Fewer beams for faster output
             early_stopping=True,
             no_repeat_ngram_size=3,
-            length_penalty=1.0,  # Neutral length penalty for balanced summaries
-            repetition_penalty=2.0,  # Avoid repetition in longer summaries
-            temperature=1.0  # Standard temperature for coherent output
+            length_penalty=1.0,
+            repetition_penalty=1.5
         )
 
     # Decode
-    summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+    summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True).strip()
     return summary
 
 
+def read_paragraph():
+    """Read a paragraph from stdin (supports multi-line)."""
+    if not sys.stdin.isatty():
+        return sys.stdin.read().strip()
+    print("Paste a paragraph to summarize. Finish with an empty line:\n")
+    lines = []
+    while True:
+        try:
+            line = input()
+        except EOFError:
+            break
+        if line.strip() == "" and lines:
+            break
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
 def main():
-    """Main function to run summarization demo."""
+    """Main function to run summarization."""
+    model, tokenizer, device = create_summarization_pipeline()
 
-    # Create the summarization pipeline
-    model, tokenizer = create_summarization_pipeline()
-    device = get_device()
-
-    # Sample text to summarize (climate change example)
-    text = """Climate change is one of the most pressing global
-         challenges of the twenty-first century, affecting
-         ecosystems, economies, and human health across the world.
-         Rising global temperatures have led to more frequent and
-         severe weather events such as heatwaves, floods, droughts,
-         and hurricanes, placing strain on infrastructure and food
-         systems. Human activities, particularly the burning of fossil
-         fuels and large-scale deforestation, are the primary drivers of
-         greenhouse gas emissions that accelerate this process. While international
-         agreements and national policies aim to reduce emissions and promote renewable energy,
-         progress remains uneven. Addressing climate change will require coordinated global action, technological innovation,
-         and long-term changes in consumption and production patterns."""
-
-    # Example conversation format (for AI chat summarization)
-    conversation = """USER: How do I implement a binary search tree in Python?
-
-ASSISTANT: I'll help you implement a binary search tree (BST) in Python. Here's a complete implementation with insertion, search, and traversal methods.
-
-USER: Can you also add a delete method?
-
-ASSISTANT: Absolutely! I'll add a delete method that handles three cases: deleting a leaf node, a node with one child, and a node with two children."""
-
-    print("EXAMPLE 1: Summarizing Article Text")
-    print(f"Original text ({len(text.split())} words):")
-    print(text.strip()[:200] + "...")
+    text = read_paragraph()
+    if not text:
+        print("No input provided.")
+        return
 
     try:
-        result = summarize(text, model, tokenizer, device, max_length=256, min_length=100)
-        print(f"Summary ({len(result.split())} words):")
+        result = summarize(text, model, tokenizer, device, target_words=50)
+        print(f"\nSummary (~50 words, {len(result.split())} words):")
         print(result)
-    except Exception as e:
-        print(f"Error during summarization: {e}")
-
-    print("EXAMPLE 2: Summarizing AI Conversation")
-    print(f"\nOriginal conversation ({len(conversation.split())} words):")
-    print(conversation)
-
-    try:
-        result2 = summarize(conversation, model, tokenizer, device, max_length=200, min_length=80)
-        print(f"Summary ({len(result2.split())} words):")
-        print(result2)
-    except Exception as e:
-        print(f"Error during summarization: {e}")
-
-    # Example 3: Large RAG-style context (simulating retrieved documents)
-    large_context = """USER: What are the best practices for implementing a scalable microservices architecture?
-
-ASSISTANT: I'll provide comprehensive guidance on microservices best practices.
-
-1. Service Design Principles:
-- Single Responsibility: Each service should handle one business capability
-- Bounded Context: Define clear boundaries using Domain-Driven Design
-- API-First Design: Design APIs before implementation
-- Loose Coupling: Minimize dependencies between services
-- High Cohesion: Keep related functionality together
-
-2. Communication Patterns:
-- Synchronous: REST APIs, gRPC for real-time requests
-- Asynchronous: Message queues (RabbitMQ, Kafka) for event-driven architecture
-- Service Mesh: Implement service discovery and load balancing (Istio, Linkerd)
-
-3. Data Management:
-- Database per Service: Each service owns its data
-- Event Sourcing: Store state changes as events
-- CQRS: Separate read and write operations
-- Saga Pattern: Handle distributed transactions
-
-4. Deployment and Operations:
-- Containerization: Use Docker for consistency
-- Orchestration: Kubernetes for scaling and management
-- CI/CD: Automated testing and deployment pipelines
-- Monitoring: Distributed tracing (Jaeger), metrics (Prometheus), logging (ELK)
-
-5. Security:
-- API Gateway: Centralized authentication and authorization
-- OAuth2/JWT: Secure service-to-service communication
-- Secrets Management: Use Vault or cloud-native solutions
-- Network Policies: Implement zero-trust networking
-
-6. Resilience:
-- Circuit Breakers: Prevent cascade failures
-- Retry Logic: Handle transient failures
-- Rate Limiting: Protect against overload
-- Bulkheads: Isolate critical resources
-
-USER: Can you elaborate on the saga pattern for distributed transactions?
-
-ASSISTANT: Absolutely! The Saga pattern is crucial for maintaining data consistency across microservices.
-
-A saga is a sequence of local transactions where each service performs its transaction and publishes an event. If any step fails, compensating transactions are executed to undo the changes.
-
-Types of Sagas:
-1. Choreography: Services listen to events and decide what to do next
-2. Orchestration: A central coordinator manages the transaction flow
-
-Example - E-commerce Order:
-- Order Service: Create order (reserved state)
-- Payment Service: Process payment
-- Inventory Service: Reserve items
-- Shipping Service: Schedule delivery
-
-If payment fails, compensating transactions:
-- Cancel order reservation
-- Release inventory
-- Notify customer
-
-Implementation with event sourcing ensures you can replay events and maintain consistency even in failure scenarios."""
-
-    print("\n" + "=" * 70)
-    print("EXAMPLE 3: Large RAG-Style Context (Microservices Discussion)")
-    print("=" * 70)
-    print(f"\nOriginal context ({len(large_context.split())} words):")
-    print(large_context[:300] + "...")
-
-    try:
-        result3 = summarize(large_context, model, tokenizer, device, max_length=256, min_length=100)
-        print(f"\nSummary ({len(result3.split())} words):")
-        print(result3)
     except Exception as e:
         print(f"Error during summarization: {e}")
 
