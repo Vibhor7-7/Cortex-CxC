@@ -416,11 +416,11 @@ const spriteTex = makeCircleSprite(64);
 // ---------- Point shader ----------
 const geom = new THREE.BufferGeometry();
 geom.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-const aColor = new Float32Array(CFG.N * 3);
-const aAlpha = new Float32Array(CFG.N);
-const aBoost = new Float32Array(CFG.N);
-const aBoostTarget = new Float32Array(CFG.N);
-const aBoostBase = new Float32Array(CFG.N);
+let aColor = new Float32Array(CFG.N * 3);
+let aAlpha = new Float32Array(CFG.N);
+let aBoost = new Float32Array(CFG.N);
+let aBoostTarget = new Float32Array(CFG.N);
+let aBoostBase = new Float32Array(CFG.N);
 for (let i=0; i<CFG.N; i++) {
   const c = clusterId[i];
   const hue = (c / CFG.CLUSTERS);
@@ -1578,10 +1578,14 @@ function rebuildPointsGeometry() {
   // Update position attribute
   geom.setAttribute("position", new THREE.BufferAttribute(pos, 3));
 
-  // Rebuild color, alpha, boost attributes
-  const aColor = new Float32Array(N * 3);
-  const aAlpha = new Float32Array(N);
-  const aBoost = new Float32Array(N);
+  // Rebuild ALL per-point arrays (reassign outer-scope variables so the
+  // animation loop, hover/select handlers, and edge builder always
+  // reference the correctly-sized arrays).
+  aColor = new Float32Array(N * 3);
+  aAlpha = new Float32Array(N);
+  aBoost = new Float32Array(N);
+  aBoostTarget = new Float32Array(N);
+  aBoostBase = new Float32Array(N);
 
   // Find max cluster ID for color distribution
   const maxCluster = Math.max(...Array.from(clusterId));
@@ -1672,17 +1676,16 @@ async function tryLoadBackendData() {
       timestamps[i] = new Date(node.created_at);
       backendClusters.add(node.cluster_id ?? 0);
 
-      // Use start_position for anchor (initial embedding position)
-      const [ax, ay, az] = node.start_position || [0, 0, 0];
+      // Anchor = UMAP-projected 3D coordinate (spring target)
+      const [ax, ay, az] = node.position || [0, 0, 0];
       anchors[i * 3 + 0] = ax;
       anchors[i * 3 + 1] = ay;
       anchors[i * 3 + 2] = az;
 
-      // Use position for current animated position
-      const [px, py, pz] = node.position || node.start_position || [0, 0, 0];
-      pos[i * 3 + 0] = px;
-      pos[i * 3 + 1] = py;
-      pos[i * 3 + 2] = pz;
+      // Start current pos near anchor (slight jitter for visual pop-in)
+      pos[i * 3 + 0] = ax + (Math.random() - 0.5) * 0.6;
+      pos[i * 3 + 1] = ay + (Math.random() - 0.5) * 0.6;
+      pos[i * 3 + 2] = az + (Math.random() - 0.5) * 0.6;
 
       // Initialize velocity to zero
       vel[i * 3 + 0] = 0;
