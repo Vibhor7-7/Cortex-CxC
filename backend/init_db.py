@@ -183,7 +183,7 @@ def main():
                 return
         
         # Create tables
-        print("\n Creating database tables...")
+        print("\nCreating database tables...")
         init_db()
         print(" Successfully created all tables:")
         print("   - conversations")
@@ -196,7 +196,7 @@ def main():
             create_sample_data()
         
         print("\n" + "=" * 60)
-        print(" Database initialization complete!")
+        print("Database initialization complete!")
         print("=" * 60)
         print("\nYou can now start the backend server:")
         print("  uvicorn backend.main:app --reload")

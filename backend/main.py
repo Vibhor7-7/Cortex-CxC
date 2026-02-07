@@ -53,14 +53,14 @@ async def lifespan(app: FastAPI):
     else:
         print(" OpenAI API key configured")
     
-    print(" CORTEX backend ready!")
+    print("CORTEX backend ready!")
     
     yield
     
     # Shutdown
-    print("🛑 Shutting down CORTEX backend...")
+    print("Shutting down CORTEX backend...")
     engine.dispose()
-    print("👋 Goodbye!")
+    print("Goodbye!")
 
 
 # Create FastAPI app
