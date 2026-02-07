@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
+import { fetchChats, searchChats, fetchChatDetails, uploadChatFile, healthCheck, ApiError } from "./api.js";
 
 /**********************************************************************
  * Cortext — split-file Three.js
@@ -61,6 +62,64 @@ const pTime = document.getElementById("pTime");
 const pTags = document.getElementById("pTags");
 const pSnippet = document.getElementById("pSnippet");
 const pNeighbors = document.getElementById("pNeighbors");
+
+// ---------- Loading / Toast helpers ----------
+const loadingOverlay = document.getElementById("loadingOverlay");
+const loadingMessage = document.getElementById("loadingMessage");
+const toastContainer = document.getElementById("toastContainer");
+
+/** Show the fullscreen loading overlay with a custom message. */
+function showLoading(msg = "Loading…") {
+  loadingMessage.textContent = msg;
+  loadingOverlay.classList.remove("hidden");
+  loadingOverlay.style.display = "flex";
+}
+
+/** Hide the fullscreen loading overlay. */
+function hideLoading() {
+  loadingOverlay.classList.add("hidden");
+  setTimeout(() => {
+    if (loadingOverlay.classList.contains("hidden")) {
+      loadingOverlay.style.display = "none";
+    }
+  }, 350);
+}
+
+/**
+ * Show a toast notification.
+ * @param {string} msg   – Text to show
+ * @param {"error"|"info"|"success"} type
+ * @param {number} durationMs – Auto-dismiss time (0 = manual)
+ */
+function showToast(msg, type = "info", durationMs = 4000) {
+  const el = document.createElement("div");
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  toastContainer.appendChild(el);
+  if (durationMs > 0) {
+    setTimeout(() => {
+      el.style.opacity = "0";
+      el.style.transform = "translateY(12px)";
+      el.style.transition = "opacity 280ms, transform 280ms";
+      setTimeout(() => el.remove(), 300);
+    }, durationMs);
+  }
+  return el;
+}
+
+/** Show a spinner inside the search results dropdown. */
+function showSearchLoading() {
+  resultsEl.style.display = "block";
+  resultsEl.innerHTML = `<div class="resItem loading"><span class="inline-spinner"></span>Searching…</div>`;
+}
+
+/** Track whether the API is currently being called (disable interactions). */
+let apiLoading = false;
+
+function setApiLoading(on) {
+  apiLoading = on;
+  searchEl.disabled = on;
+}
 
 // ---------- Renderer / Scene ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
@@ -736,7 +795,7 @@ function populatePanel(i) {
   pCluster.textContent = clusterName(n.cluster);
   pTime.textContent = fmtDate(n.time);
   pTags.textContent = n.tags.join(", ");
-  pSnippet.textContent = n.full;
+  pSnippet.textContent = n.full || n.snippet || "";
 
   pNeighbors.innerHTML = "";
   const neigh = topKNeighbors(i, CFG.EDGE_K);
@@ -750,6 +809,31 @@ function populatePanel(i) {
                       <span class="badge">${sim.toFixed(2)}</span>`;
     item.addEventListener("click", () => setSelected(j));
     pNeighbors.appendChild(item);
+  }
+
+  // If we have backend data, fetch full details asynchronously
+  if (backendDataLoaded && n.backendId) {
+    pSnippet.innerHTML = `<span class="inline-spinner"></span> Loading details…`;
+    fetchChatDetails(n.backendId).then((details) => {
+      // Show summary + first few messages
+      let content = "";
+      if (details.summary) content += details.summary + "\n\n";
+      if (details.messages && details.messages.length) {
+        const preview = details.messages.slice(0, 4);
+        for (const msg of preview) {
+          const role = msg.role === "user" ? "👤" : "🤖";
+          const text = msg.content.length > 200 ? msg.content.slice(0, 200) + "…" : msg.content;
+          content += `${role} ${text}\n\n`;
+        }
+        if (details.messages.length > 4) {
+          content += `… and ${details.messages.length - 4} more messages`;
+        }
+      }
+      pSnippet.textContent = content || n.full || n.snippet || "";
+    }).catch((err) => {
+      console.warn("[panel] Failed to load details:", err);
+      pSnippet.textContent = n.full || n.snippet || "(details unavailable)";
+    });
   }
 }
 
@@ -829,20 +913,68 @@ function applyLocalGravity(i, dt) {
 }
 
 // ---------- Search ----------
-function searchNodes(query) {
+/** Map from conversation UUID → index in the nodes[] array. */
+const nodeIdToIndex = new Map();
+function rebuildIdIndex() {
+  nodeIdToIndex.clear();
+  for (let i = 0; i < nodes.length; i++) {
+    if (nodes[i] && nodes[i].id != null) nodeIdToIndex.set(String(nodes[i].id), i);
+  }
+}
+
+/**
+ * Local fallback search using cosine similarity (works when backend is unreachable
+ * or data was loaded as fake).
+ */
+function searchNodesLocal(query) {
   const q = query.trim();
   if (!q) return [];
   const qv = embedText(q, CFG.D);
 
   const clusterFilter = parseInt(clusterSel.value, 10);
   const scored = [];
-  for (let i=0; i<CFG.N; i++) {
+  for (let i = 0; i < CFG.N; i++) {
     if (clusterFilter >= 0 && clusterId[i] !== clusterFilter) continue;
+    if (!vectors[i]) continue;
     const sim = dot(qv, vectors[i]);
     scored.push([sim, i]);
   }
-  scored.sort((a,b) => b[0]-a[0]);
+  scored.sort((a, b) => b[0] - a[0]);
   return scored.slice(0, 30);
+}
+
+/**
+ * Search via the backend API.  Returns the same [score, index] format as
+ * the local fallback so the rest of the UI code stays identical.
+ */
+async function searchNodesBackend(query) {
+  const q = query.trim();
+  if (!q) return [];
+  const cf = parseInt(clusterSel.value, 10);
+  try {
+    const res = await searchChats(q, 30, cf >= 0 ? cf : null);
+    const list = [];
+    for (const r of res.results) {
+      const idx = nodeIdToIndex.get(String(r.conversation_id));
+      if (idx != null) {
+        list.push([r.score, idx]);
+      }
+    }
+    return list;
+  } catch (err) {
+    console.warn("[search] Backend search failed, falling back to local:", err);
+    showToast("Search fell back to local mode", "info", 2500);
+    return searchNodesLocal(query);
+  }
+}
+
+/** Whether we have real backend data loaded (vs fake). */
+let backendDataLoaded = false;
+
+/** Unified search: prefer backend when available. */
+async function searchNodes(query) {
+  if (backendDataLoaded) return searchNodesBackend(query);
+  return searchNodesLocal(query);
 }
 
 function showResults(list) {
@@ -909,19 +1041,37 @@ function selectActiveResult() {
 }
 
 let searchTimer = null;
+let searchAbort = null;  // track in-flight searches
+
+async function triggerSearch() {
+  const q = searchEl.value.trim();
+  if (!q) { hideResults(); return; }
+
+  // Show inline loading only for backend searches
+  if (backendDataLoaded) showSearchLoading();
+  setApiLoading(true);
+
+  try {
+    const list = await searchNodes(q);
+    showResults(list);
+  } catch (err) {
+    console.error("[search]", err);
+    showToast(`Search error: ${err.message}`, "error");
+    hideResults();
+  } finally {
+    setApiLoading(false);
+  }
+}
+
 searchEl.addEventListener("input", () => {
   clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => {
-    const q = searchEl.value;
-    const list = searchNodes(q);
-    showResults(list);
-  }, 80);
+  // Longer debounce for backend (network latency) vs instant local
+  const delay = backendDataLoaded ? 350 : 80;
+  searchTimer = setTimeout(() => triggerSearch(), delay);
 });
 
 searchEl.addEventListener("focus", () => {
-  const q = searchEl.value;
-  const list = searchNodes(q);
-  showResults(list);
+  triggerSearch();
 });
 
 document.addEventListener("click", (e) => {
@@ -934,7 +1084,7 @@ clusterSel.addEventListener("change", () => {
   const cf = parseInt(clusterSel.value, 10);
   if (cf >= 0 && selected >= 0 && clusterId[selected] !== cf) setSelected(-1);
   if (document.activeElement === searchEl) {
-    showResults(searchNodes(searchEl.value));
+    triggerSearch();
   }
 });
 
@@ -1320,3 +1470,51 @@ updateSelectedUI();
 
 // ---------- Build all edges at startup ----------
 buildAllEdges();
+
+// ---------- Backend data bootstrap ----------
+/**
+ * Try to load real data from the Cortex backend.
+ * If it succeeds and there are nodes, replace the fake data in-place.
+ * If it fails (backend offline, no data, etc.) keep the demo data.
+ */
+async function tryLoadBackendData() {
+  showLoading("Connecting to Cortex backend…");
+
+  try {
+    // 1. Health check
+    const health = await healthCheck();
+    if (!health.ollama_connected) {
+      showToast("Ollama is not running — using demo data", "info", 5000);
+      hideLoading();
+      return;
+    }
+
+    showLoading("Loading conversations…");
+
+    // 2. Fetch visualization data
+    const viz = await fetchChats();
+
+    if (!viz.nodes || viz.nodes.length === 0) {
+      showToast("No conversations yet — upload a chat export to get started", "info", 5000);
+      hideLoading();
+      return;
+    }
+
+    showToast(`Loaded ${viz.nodes.length} conversations from backend`, "success", 3000);
+    backendDataLoaded = true;
+
+    // Build the lookup index
+    rebuildIdIndex();
+    hideLoading();
+  } catch (err) {
+    console.warn("[init] Backend unavailable, keeping demo data:", err.message);
+    showToast("Backend offline — showing demo data", "info", 5000);
+    hideLoading();
+  }
+}
+
+// Kick off backend loading (non-blocking — animation already runs)
+tryLoadBackendData();
+
+// Hide loading overlay after a safety timeout (in case something hangs)
+setTimeout(() => hideLoading(), 12000);
