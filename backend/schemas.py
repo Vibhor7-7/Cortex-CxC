@@ -119,6 +119,7 @@ class SearchRequest(BaseModel):
     semantic_weight: float = Field(default=0.7, ge=0.0, le=1.0)
     cluster_filter: Optional[int] = None
     topic_filter: Optional[List[str]] = None
+    evaluate: bool = Field(default=False, description="Enable Backboard.io retrieval quality evaluation")
 
 
 class SearchResultItem(BaseModel):
@@ -131,6 +132,34 @@ class SearchResultItem(BaseModel):
     cluster_name: Optional[str] = None
     score: float
     message_preview: Optional[str] = None  # Preview of relevant message content
+    relevance_score: Optional[float] = None  # Backboard evaluation score (0.0-1.0)
+    relevance_reason: Optional[str] = None  # Reason for relevance score
+
+
+# ============================================================================
+# Backboard Evaluation Schemas
+# ============================================================================
+
+class RelevanceScore(BaseModel):
+    """Schema for individual relevance score from Backboard evaluation."""
+    conversation_id: str
+    score: float = Field(..., ge=0.0, le=1.0, description="Relevance score from 0.0 to 1.0")
+    reason: str = Field(..., description="Brief explanation for the score")
+
+
+class RetrievalEvaluation(BaseModel):
+    """Schema for full retrieval evaluation from Backboard."""
+    relevance_scores: List[RelevanceScore] = Field(default_factory=list)
+    redundancy_score: float = Field(default=0.0, ge=0.0, le=1.0, description="How much overlap exists between results")
+    coverage_score: float = Field(default=0.0, ge=0.0, le=1.0, description="How completely results address the query")
+    evaluation_time_ms: float = Field(default=0.0, description="Time taken for evaluation in milliseconds")
+
+
+class GuardResult(BaseModel):
+    """Schema for MCP guard relevance check result."""
+    is_relevant: bool = Field(..., description="Whether the memory is relevant to the query")
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score for the relevance decision")
+    reason: str = Field(..., description="Brief explanation for the decision")
 
 
 class SearchResponse(BaseModel):
@@ -139,6 +168,7 @@ class SearchResponse(BaseModel):
     results: List[SearchResultItem]
     total_results: int
     search_time_ms: float
+    evaluation: Optional[RetrievalEvaluation] = None  # Backboard evaluation (when evaluate=true)
 
 
 # ============================================================================

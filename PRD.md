@@ -742,46 +742,47 @@ The foundation is solid and ready for:
 
 ---
 
-### Task 4.2: Replace Fake Data with Backend Data
+### Task 4.2: Replace Fake Data with Backend Data ✅
 **Priority:** P0 (Critical)
 **Estimated Time:** 4 hours
 **Owner:** Frontend Team
+**Status:** COMPLETE
 
 #### Sub-tasks:
-- [ ] **4.2.1** Update `frontend/src/main.js` data initialization:
-  - Remove fake data generation (lines ~150-286 in current implementation)
-  - Replace with `fetchChats()` API call on page load
-  - Map backend response to frontend data structures:
-    - `nodes[]` array from conversations
-    - `vectors[]` from embedding_384d (or skip if using backend search)
-    - `clusterId[]` from cluster_id
-    - `timestamps[]` from created_at
-    - `anchors[]` and `pos[]` from vector_3d (start_x, start_y, start_z → end_x, end_y, end_z)
-  - Handle empty state (no conversations yet)
+- [x] **4.2.1** Update `frontend/src/main.js` data initialization:
+  - Removed all fake data generation (cluster vectors, TOPICS, pickTags, node loop)
+  - App starts with `CFG.N = 0` and empty arrays — no synthetic data
+  - `tryLoadBackendData()` fetches from `fetchChats()` on page load
+  - Maps backend `VisualizationNode` → frontend `nodes[]`, `clusterId[]`, `timestamps[]`, `anchors[]`, `pos[]`
+  - Stores `messageCount` from backend `message_count` field
+  - Empty state overlay shown when no conversations exist
 
-- [ ] **4.2.2** Update search to use backend:
-  - Modify `searchNodes()` function (lines 806-820)
-  - Replace local `embedText()` and cosine similarity with `searchChats()` API call
-  - Keep client-side cluster filtering or move to backend
-  - Update results display with backend scores
+- [x] **4.2.2** Update search to use backend:
+  - `searchNodes()` dispatches to `searchNodesBackend()` when `backendDataLoaded` is true
+  - Backend search uses hybrid retrieval via `searchChats()` API
+  - Falls back to local cosine similarity search if backend is unreachable
+  - Cluster filtering supported in both modes
 
-- [ ] **4.2.3** Update panel to show full conversation details:
-  - Modify `populatePanel()` function (lines 707-728)
-  - Call `fetchChatDetails(id)` when node is selected
-  - Display conversation messages in snippet area
-  - Show message count, timestamps, and metadata
+- [x] **4.2.3** Update panel to show full conversation details:
+  - `populatePanel()` shows title, cluster, time, message count, tags
+  - Async `fetchChatDetails(id)` loads full messages when node is selected
+  - Shows summary + first 4 messages with role emojis (👤/🤖)
+  - Added `#pMsgCount` display in panel KV section
 
-- [ ] **4.2.4** Add error handling:
-  - Show error messages in UI when API calls fail
-  - Add retry button for failed requests
-  - Log errors to console for debugging
+- [x] **4.2.4** Add error handling:
+  - Loading overlay with retry button for connection failures
+  - Toast notifications for errors, warnings, and success states
+  - Inline error display in search results dropdown
+  - Panel shows fallback summary on detail fetch failure
+  - Empty state with upload button when no data / backend offline
+  - Safety timeout (15s) prevents indefinite loading states
 
 **Acceptance Criteria:**
--  3D visualization renders with backend data (no fake data)
--  Points are positioned using backend-generated 3D coordinates
--  Search uses backend hybrid retrieval (OpenAI Vector Store)
--  Panel displays real conversation content
--  Errors are handled gracefully
+- ✅ 3D visualization renders with backend data (no fake data)
+- ✅ Points are positioned using backend-generated 3D coordinates
+- ✅ Search uses backend hybrid retrieval
+- ✅ Panel displays real conversation content
+- ✅ Errors are handled gracefully
 
 ---
 
@@ -1004,29 +1005,305 @@ The foundation is solid and ready for:
 
 ---
 
-## PHASE 6: Testing & Quality Assurance
+## PHASE 6: Backboard.io Integration
+**Status:**  **COMPLETE** - All tasks implemented and tested
 
-### Task 6.1: Backend Testing
-**Priority:** P1 (High)  
-**Estimated Time:** 4 hours  
+### Overview
+Integrate Backboard.io to add retrieval quality evaluation and MCP safety guards.
+- **Retrieval Quality Evaluation**: Score search results for relevance, redundancy, coverage
+- **MCP Safety Guard**: Block low-confidence memories from context injection
+
+### Task 6.1: Backboard Evaluation Service
+**Priority:** P1 (High)
+**Estimated Time:** 3 hours
+**Owner:** Backend Team
+**Status:**  COMPLETE
+
+#### Sub-tasks:
+- [x] **6.1.1** Create `backend/services/backboard_evaluator.py`
+- [x] **6.1.2** Implement `BackboardEvaluator` class with async HTTP client
+- [x] **6.1.3** Add assistant creation for evaluation context
+- [x] **6.1.4** Implement `evaluate_retrieval(query, results)` method
+- [x] **6.1.5** Add retry logic with exponential backoff (tenacity)
+
+**Acceptance Criteria:**
+-  Service initializes with API key from environment
+-  Gracefully returns empty evaluation if Backboard unavailable
+-  Evaluation includes relevance, redundancy, and coverage scores
+
+**Implementation Details:**
+- [backend/services/backboard_evaluator.py](backend/services/backboard_evaluator.py) - 350 lines
+  - BackboardEvaluator class with Backboard.io API integration
+  - Prompt engineering for relevance, redundancy, and coverage evaluation
+  - Singleton pattern for service instance
+  - Retry logic with tenacity library
+
+---
+
+### Task 6.2: Evaluation Prompt Engineering
+**Priority:** P1 (High)
+**Estimated Time:** 2 hours
+**Owner:** Backend Team
+**Status:**  COMPLETE
+
+#### Sub-tasks:
+- [x] **6.2.1** Design relevance scoring prompt (0.0-1.0 per result)
+- [x] **6.2.2** Design redundancy detection prompt
+- [x] **6.2.3** Design coverage assessment prompt
+- [x] **6.2.4** Optimize for JSON structured output
+
+**Acceptance Criteria:**
+-  Prompts produce consistent JSON output
+-  Scores range from 0.0 to 1.0
+-  Prompts work across different query types
+
+---
+
+### Task 6.3: Search API Reranking Integration
+**Priority:** P1 (High)
+**Estimated Time:** 2 hours
+**Owner:** Backend Team
+**Status:**  COMPLETE
+
+#### Sub-tasks:
+- [x] **6.3.1** Add `evaluate: bool = False` parameter to SearchRequest
+- [x] **6.3.2** Call BackboardEvaluator after vector search
+- [x] **6.3.3** Rerank results by Backboard relevance scores
+- [x] **6.3.4** Include evaluation metrics in SearchResponse
+
+**Acceptance Criteria:**
+-  `POST /api/search/?evaluate=true` returns evaluation scores
+-  Results reordered by Backboard relevance when enabled
+-  Search still works if Backboard unavailable (graceful degradation)
+
+**Implementation Details:**
+- [backend/api/search.py](backend/api/search.py) - Updated with evaluation integration
+  - Optional `evaluate` parameter in SearchRequest
+  - Calls BackboardEvaluator when enabled
+  - Reranks results using `rerank_by_scores()` function
+
+---
+
+### Task 6.4: Evaluation Schemas
+**Priority:** P1 (High)
+**Estimated Time:** 1 hour
+**Owner:** Backend Team
+**Status:**  COMPLETE
+
+#### Sub-tasks:
+- [x] **6.4.1** Add `RelevanceScore` model (id, score, reason)
+- [x] **6.4.2** Add `RetrievalEvaluation` model (scores, redundancy, coverage)
+- [x] **6.4.3** Add `GuardResult` model for MCP guard
+- [x] **6.4.4** Update `SearchResponse` with optional evaluation field
+
+**Acceptance Criteria:**
+-  All models have proper Pydantic validation
+-  Score fields bounded to 0.0-1.0 range
+-  OpenAPI docs show evaluation response structure
+
+**Implementation Details:**
+- [backend/schemas.py](backend/schemas.py) - Extended with evaluation schemas
+  - RelevanceScore, RetrievalEvaluation, GuardResult models
+  - SearchResultItem extended with relevance_score, relevance_reason
+  - SearchResponse extended with optional evaluation field
+
+---
+
+### Task 6.5: Backboard Configuration
+**Priority:** P1 (High)
+**Estimated Time:** 1 hour
+**Owner:** Backend Team
+**Status:**  COMPLETE
+
+#### Sub-tasks:
+- [x] **6.5.1** Add to `.env.example`:
+  - `BACKBOARD_API_KEY` (required for features)
+  - `BACKBOARD_API_URL` (default: https://app.backboard.io/api)
+  - `BACKBOARD_ENABLED` (default: false)
+  - `BACKBOARD_EVAL_MODEL` (default: gpt-4.1)
+- [x] **6.5.2** Add config loading to MCP config
+- [x] **6.5.3** Add guard configuration settings
+
+**Acceptance Criteria:**
+-  System starts without Backboard configured
+-  Clear configuration options in .env.example
+
+**Implementation Details:**
+- [backend/.env.example](backend/.env.example) - Extended with Backboard config
+- [backend/cortex_mcp/config.py](backend/cortex_mcp/config.py) - BackboardConfig class added
+
+---
+
+### Task 6.6: MCP Relevance Guard Service
+**Priority:** P1 (High)
+**Estimated Time:** 3 hours
+**Owner:** MCP Team
+**Status:**  COMPLETE
+
+#### Sub-tasks:
+- [x] **6.6.1** Create `backend/services/backboard_guard.py`
+- [x] **6.6.2** Implement `RelevanceGuard` class
+- [x] **6.6.3** Implement `check_relevance(query, memory)` method
+- [x] **6.6.4** Implement `filter_relevant_memories(query, memories, threshold)` method
+- [x] **6.6.5** Add logging for blocked memories
+
+**Acceptance Criteria:**
+-  Guard filters memories below confidence threshold
+-  Blocked memories logged with reason
+-  Guard bypassed gracefully if Backboard unavailable
+
+**Implementation Details:**
+- [backend/services/backboard_guard.py](backend/services/backboard_guard.py) - 250 lines
+  - RelevanceGuard class with Backboard.io integration
+  - Fast single-hop relevance checking prompt
+  - Configurable threshold and logging
+
+---
+
+### Task 6.7: MCP Server Guard Integration
+**Priority:** P1 (High)
+**Estimated Time:** 2 hours
+**Owner:** MCP Team
+**Status:**  COMPLETE
+
+#### Sub-tasks:
+- [x] **6.7.1** Add guard check in `search_memory` tool handler
+- [x] **6.7.2** Add `[GUARD]` prefix to filtered result messages
+- [x] **6.7.3** Add `--disable-guard` CLI flag for testing
+- [x] **6.7.4** Log guard status on startup
+
+**Acceptance Criteria:**
+-  Low-confidence memories filtered before LLM sees them
+-  Guard status shown in tool output
+-  Can disable guard for debugging
+
+**Implementation Details:**
+- [backend/cortex_mcp/server.py](backend/cortex_mcp/server.py) - Guard integration
+  - `_apply_guard_filter()` helper function
+  - Guard status in search results header
+  - `--disable-guard` CLI argument
+
+---
+
+### Task 6.8: Guard Configuration
+**Priority:** P1 (High)
+**Estimated Time:** 1 hour
+**Owner:** MCP Team
+**Status:**  COMPLETE
+
+#### Sub-tasks:
+- [x] **6.8.1** Add to MCP config:
+  - `BACKBOARD_GUARD_ENABLED` (default: true when API key present)
+  - `BACKBOARD_GUARD_THRESHOLD` (default: 0.5)
+  - `BACKBOARD_GUARD_LOG_BLOCKED` (default: true)
+- [x] **6.8.2** Validate threshold range (0.0-1.0)
+
+**Acceptance Criteria:**
+-  Guard automatically enabled when Backboard configured
+-  Threshold configurable via environment
+
+---
+
+### Task 6.9: Guard Prompt Engineering
+**Priority:** P1 (High)
+**Estimated Time:** 2 hours
+**Owner:** MCP Team
+**Status:**  COMPLETE
+
+#### Sub-tasks:
+- [x] **6.9.1** Design fast relevance check prompt
+- [x] **6.9.2** Optimize for single-hop reasoning (speed)
+- [x] **6.9.3** Ensure strict filtering (prefer false negatives over hallucinations)
+- [x] **6.9.4** Return structured JSON output
+
+**Acceptance Criteria:**
+-  Guard prompt is concise and fast
+-  Prompt errs on side of blocking irrelevant content
+-  JSON output reliable across query types
+
+---
+
+### Task 6.10: Integration Testing
+**Priority:** P1 (High)
+**Estimated Time:** 3 hours
+**Owner:** QA Team
+**Status:**  COMPLETE
+
+#### Sub-tasks:
+- [x] **6.10.1** Create `tests/test_backboard_integration.py`
+- [x] **6.10.2** Test evaluation service with mock Backboard
+- [x] **6.10.3** Test guard service with mock Backboard
+- [x] **6.10.4** Test graceful degradation when Backboard unavailable
+- [x] **6.10.5** Test schema validation
+
+**Acceptance Criteria:**
+-  All tests pass with mocked Backboard
+-  Tests verify graceful degradation
+-  Tests cover edge cases (empty results, errors)
+
+**Test Results:**
+- [tests/test_backboard_integration.py](tests/test_backboard_integration.py) - 450 lines
+  - 25+ test cases for evaluator and guard
+  - Mock-based testing (no real API calls)
+  - Edge case and error handling coverage
+
+---
+
+##  PHASE 6 COMPLETION SUMMARY
+
+**Status:**  **100% COMPLETE** - All tasks implemented and tested
+
+### What's Been Accomplished
+
+#### Retrieval Quality Evaluation
+- **BackboardEvaluator Service** - Scores search results for relevance, redundancy, and coverage
+- **Prompt Engineering** - Optimized prompts for consistent JSON output
+- **Search API Integration** - Optional `evaluate=true` parameter with reranking
+- **Graceful Degradation** - System works normally without Backboard configured
+
+#### MCP Safety Guard
+- **RelevanceGuard Service** - Blocks low-confidence memories from context injection
+- **Fast Relevance Checking** - Single-hop prompt optimized for speed
+- **Configurable Threshold** - Default 0.5, adjustable via environment
+- **MCP Integration** - Guard runs before search results returned to LLM
+
+### Files Created
+1. `backend/services/backboard_evaluator.py` - Evaluation service (350 lines)
+2. `backend/services/backboard_guard.py` - Guard service (250 lines)
+3. `tests/test_backboard_integration.py` - Integration tests (450 lines)
+
+### Files Modified
+1. `backend/.env.example` - Added Backboard configuration
+2. `backend/schemas.py` - Added evaluation/guard schemas
+3. `backend/api/search.py` - Added evaluation integration
+4. `backend/cortex_mcp/server.py` - Added guard integration
+5. `backend/cortex_mcp/config.py` - Added BackboardConfig class
+
+---
+
+## PHASE 7: Testing & Quality Assurance
+
+### Task 7.1: Backend Testing
+**Priority:** P1 (High)
+**Estimated Time:** 4 hours
 **Owner:** QA/Backend Team
 
 #### Sub-tasks:
-- [ ] **6.1.1** Unit tests for parsers:
+- [ ] **7.1.1** Unit tests for parsers:
   - Test with various HTML formats
   - Test edge cases (empty chats, special characters)
 
-- [ ] **6.1.2** Unit tests for search:
+- [ ] **7.1.2** Unit tests for search:
   - Test semantic search accuracy
   - Test keyword search accuracy
   - Test hybrid search ranking
 
-- [ ] **6.1.3** Integration tests for API:
+- [ ] **7.1.3** Integration tests for API:
   - Test full ingestion pipeline
   - Test search endpoint with various queries
   - Test error handling
 
-- [ ] **6.1.4** Performance tests:
+- [ ] **7.1.4** Performance tests:
   - Test with 100 conversations
   - Test with 1000 conversations
   - Measure response times
@@ -1038,29 +1315,29 @@ The foundation is solid and ready for:
 
 ---
 
-### Task 6.2: End-to-End Testing
-**Priority:** P1 (High)  
-**Estimated Time:** 3 hours  
+### Task 7.2: End-to-End Testing
+**Priority:** P1 (High)
+**Estimated Time:** 3 hours
 **Owner:** QA Team
 
 #### Sub-tasks:
-- [ ] **6.2.1** Create test data set:
+- [ ] **7.2.1** Create test data set:
   - Export 10+ real ChatGPT conversations as HTML
   - Export 10+ real Claude conversations as HTML
   - Create edge case examples
 
-- [ ] **6.2.2** Test full workflow:
+- [ ] **7.2.2** Test full workflow:
   - Upload chats via frontend
   - Verify 3D visualization
   - Test search functionality
   - Test chat details view
   - Test MCP tools
 
-- [ ] **6.2.3** Browser compatibility testing:
+- [ ] **7.2.3** Browser compatibility testing:
   - Test on Chrome, Firefox, Safari
   - Test on mobile devices
 
-- [ ] **6.2.4** Create test cases document:
+- [ ] **7.2.4** Create test cases document:
   - Document all test scenarios
   - Include expected vs actual results
   - Log any bugs found
@@ -1072,37 +1349,37 @@ The foundation is solid and ready for:
 
 ---
 
-## PHASE 7: Documentation & Deployment
+## PHASE 8: Documentation & Deployment
 
-### Task 7.1: Documentation
-**Priority:** P1 (High)  
-**Estimated Time:** 4 hours  
+### Task 8.1: Documentation
+**Priority:** P1 (High)
+**Estimated Time:** 4 hours
 **Owner:** All Teams
 
 #### Sub-tasks:
-- [ ] **7.1.1** Update main README.md:
+- [ ] **8.1.1** Update main README.md:
   - Add architecture diagram
   - Add setup instructions
   - Add usage guide
   - Add screenshots/GIFs of 3D visualization
 
-- [ ] **7.1.2** Create SETUP.md:
+- [ ] **8.1.2** Create SETUP.md:
   - Backend setup steps
   - Frontend setup steps
   - MCP server setup steps
   - Environment variable configuration
 
-- [ ] **7.1.3** Create API.md:
+- [ ] **8.1.3** Create API.md:
   - Document all API endpoints
   - Include request/response examples
   - Add curl examples
 
-- [ ] **7.1.4** Create MCP_GUIDE.md:
+- [ ] **8.1.4** Create MCP_GUIDE.md:
   - How to configure Claude Desktop
   - How to use tools
   - Example prompts
 
-- [ ] **7.1.5** Add code comments:
+- [ ] **8.1.5** Add code comments:
   - Document complex algorithms
   - Add docstrings to all functions
   - Add inline comments for clarity
@@ -1114,29 +1391,29 @@ The foundation is solid and ready for:
 
 ---
 
-### Task 7.2: Deployment Preparation
-**Priority:** P2 (Medium)  
-**Estimated Time:** 3 hours  
+### Task 8.2: Deployment Preparation
+**Priority:** P2 (Medium)
+**Estimated Time:** 3 hours
 **Owner:** DevOps
 
 #### Sub-tasks:
-- [ ] **7.2.1** Create Docker configuration:
+- [ ] **8.2.1** Create Docker configuration:
   - `Dockerfile` for backend
   - `docker-compose.yml` for full stack
   - Environment variable management
 
-- [ ] **7.2.2** Create startup scripts:
+- [ ] **8.2.2** Create startup scripts:
   - `start_backend.sh` - Start FastAPI server
   - `start_frontend.sh` - Start Next.js dev server
   - `start_mcp.sh` - Start MCP server
   - `start_all.sh` - Start everything
 
-- [ ] **7.2.3** Add health checks:
+- [ ] **8.2.3** Add health checks:
   - Backend health endpoint
   - Database connection check
   - OpenAI vector store readiness check (status/file_counts)
 
-- [ ] **7.2.4** Create demo data:
+- [ ] **8.2.4** Create demo data:
   - Pre-populated database with 50+ conversations
   - Covers diverse topics
   - Ready for immediate demo
@@ -1148,36 +1425,36 @@ The foundation is solid and ready for:
 
 ---
 
-### Task 7.3: Hackathon Demo Preparation
-**Priority:** P0 (Critical)  
-**Estimated Time:** 4 hours  
+### Task 8.3: Hackathon Demo Preparation
+**Priority:** P0 (Critical)
+**Estimated Time:** 4 hours
 **Owner:** All Teams
 
 #### Sub-tasks:
-- [ ] **7.3.1** Create demo script:
+- [ ] **8.3.1** Create demo script:
   - Step-by-step demo flow
   - Key features to highlight
   - Talking points for each feature
 
-- [ ] **7.3.2** Prepare demo video:
+- [ ] **8.3.2** Prepare demo video:
   - Record 2-minute walkthrough
   - Show 3D visualization
   - Show search in action
   - Show MCP integration with Claude
 
-- [ ] **7.3.3** Create presentation slides:
+- [ ] **8.3.3** Create presentation slides:
   - Problem statement
   - Solution overview
   - Technical architecture
   - Live demo
   - Future roadmap
 
-- [ ] **7.3.4** Practice demo:
+- [ ] **8.3.4** Practice demo:
   - Run through demo 5+ times
   - Identify any issues
   - Prepare for Q&A
 
-- [ ] **7.3.5** Create backup plan:
+- [ ] **8.3.5** Create backup plan:
   - Pre-recorded video if live demo fails
   - Screenshots of key features
   - Offline demo with sample data

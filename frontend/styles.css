@@ -571,3 +571,70 @@ input[type="range"] {
   .topbar { gap: 8px; }
   .pill input[type="range"] { width: 120px; }
 }
+
+/* ---- Empty state overlay ---- */
+#emptyState {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  z-index: 50;
+}
+
+.emptyCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+  max-width: 400px;
+  padding: 32px 24px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 18px 60px rgba(0,0,0,0.5);
+  animation: floatIn 620ms ease-out both;
+}
+
+.emptyIcon {
+  font-size: 48px;
+  line-height: 1;
+}
+
+.emptyCard h2 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: 0.3px;
+  color: var(--text);
+}
+
+.emptyCard p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.emptyUploadBtn {
+  margin-top: 8px;
+  padding: 10px 20px !important;
+  font-size: 13px !important;
+  cursor: pointer;
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+  transition: background 180ms ease, transform 180ms ease;
+}
+
+.emptyUploadBtn:hover {
+  background: rgba(140, 190, 255, 0.12) !important;
+  transform: translateY(-1px);
+}
+
+/* Panel snippet - preformatted for message transcripts */
+#pSnippet {
+  white-space: pre-wrap;
+  word-break: break-word;
+}

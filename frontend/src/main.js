@@ -10,7 +10,7 @@ import { fetchChats, searchChats, fetchChatDetails, uploadChatFile, healthCheck,
 
 // ---------- Config ----------
 const CFG = {
-  N: 100,             // 300–1000
+  N: 0,               // populated from backend
   D: 128,             // vector dim
   CLUSTERS: 8,
   SPACE_SCALE: 34,    // spread in world units
@@ -228,171 +228,48 @@ function embedText(text, D=CFG.D) {
   return normalize(v);
 }
 
-// ---------- Generate clustered memory nodes ----------
-const clusters = [];
-for (let c=0; c<CFG.CLUSTERS; c++) {
-  const center = new Float32Array(CFG.D);
-  for (let i=0; i<CFG.D; i++) center[i] = (rng()*2 - 1);
-  normalize(center);
-  clusters.push(center);
+function clamp01(x) { return Math.max(0, Math.min(1, x)); }
+
+// ---------- Data arrays (start empty — populated by backend) ----------
+let nodes = [];
+let vectors = [];
+let clusterId = new Uint8Array(0);
+let timestamps = [];
+
+let anchors = new Float32Array(0);
+let pos = new Float32Array(0);
+let vel = new Float32Array(0);
+
+// ---------- Empty-state + new DOM refs ----------
+const emptyState = document.getElementById("emptyState");
+const pMsgCount = document.getElementById("pMsgCount");
+const emptyUploadInput = document.getElementById("emptyUploadInput");
+
+function showEmptyState() {
+  if (emptyState) emptyState.style.display = "flex";
 }
-
-const TOPICS = [
-  "RAG / hallucinations",
-  "Interview prep",
-  "Physics homework",
-  "Math / calculus",
-  "Hackathon ideas",
-  "Career / co-op",
-  "Audio / Voicemeeter",
-  "Random notes"
-];
-
-function pickTags(topic) {
-  const tagPool = {
-    0: ["retrieval", "embeddings", "citations", "eval"],
-    1: ["STAR", "stakeholders", "SQL", "Excel"],
-    2: ["forces", "doppler", "circuits", "lab"],
-    3: ["integrals", "trig", "proofs", "limits"],
-    4: ["3D", "three.js", "MCP", "prototype"],
-    5: ["Waterloo", "co-op", "resume", "schedule"],
-    6: ["audio", "routing", "drivers", "latency"],
-    7: ["idea", "todo", "note", "link"]
-  };
-  const pool = tagPool[topic] || ["note"];
-  const a = pool[Math.floor(rng()*pool.length)];
-  const b = pool[Math.floor(rng()*pool.length)];
-  const c = pool[Math.floor(rng()*pool.length)];
-  const set = Array.from(new Set([a,b,c]));
-  return set.slice(0, 3);
-}
-
-// Initialize with fake data size, but allow dynamic resizing
-let nodes = new Array(CFG.N);
-let vectors = new Array(CFG.N);
-let clusterId = new Uint8Array(CFG.N);
-let timestamps = new Array(CFG.N);
-
-// Also keep anchor positions (embedding projection -> 3D)
-let anchors = new Float32Array(CFG.N * 3);
-let pos = new Float32Array(CFG.N * 3);
-let vel = new Float32Array(CFG.N * 3);
-
-// Build simple 3D projection per cluster using random basis vectors
-const basis = clusters.map(() => {
-  const b1 = new Float32Array(CFG.D);
-  const b2 = new Float32Array(CFG.D);
-  const b3 = new Float32Array(CFG.D);
-  for (let i=0; i<CFG.D; i++) {
-    b1[i] = (rng()*2 - 1);
-    b2[i] = (rng()*2 - 1);
-    b3[i] = (rng()*2 - 1);
-  }
-  normalize(b1); normalize(b2); normalize(b3);
-  return [b1,b2,b3];
-});
-
-function clamp01(x){ return Math.max(0, Math.min(1, x)); }
-
-// Spread cluster centers in 3D
-const clusterCenters3 = new Array(CFG.CLUSTERS).fill(0).map((_, c) => {
-  const angle = (c / CFG.CLUSTERS) * Math.PI * 2;
-  const ring = CFG.SPACE_SCALE * 0.75;
-  const y = (rng()*2-1) * 8;
-  return new THREE.Vector3(Math.cos(angle)*ring, y, Math.sin(angle)*ring);
-});
-
-// Generate nodes
-const now = Date.now();
-const dayMs = 24*3600*1000;
-
-for (let i=0; i<CFG.N; i++) {
-  const c = Math.floor(rng()*CFG.CLUSTERS);
-  clusterId[i] = c;
-
-  const v = new Float32Array(CFG.D);
-  // cluster-centered vector with noise
-  const center = clusters[c];
-  for (let d=0; d<CFG.D; d++) {
-    v[d] = center[d] + (rng()*2-1)*0.35;
-  }
-  normalize(v);
-  vectors[i] = v;
-
-  const [b1,b2,b3] = basis[c];
-  const x = dot(v, b1);
-  const y = dot(v, b2);
-  const z = dot(v, b3);
-
-  // anchor position near that cluster's 3D center
-  const jitter = new THREE.Vector3(
-    (rng()*2-1) * 10,
-    (rng()*2-1) * 7,
-    (rng()*2-1) * 10
-  );
-  const base = clusterCenters3[c].clone().add(jitter);
-  const anchor = new THREE.Vector3(x, y, z).multiplyScalar(CFG.SPACE_SCALE * 0.55).add(base);
-
-  anchors[i*3+0] = anchor.x;
-  anchors[i*3+1] = anchor.y;
-  anchors[i*3+2] = anchor.z;
-
-  // start current pos near anchor
-  pos[i*3+0] = anchor.x + (rng()*2-1)*0.6;
-  pos[i*3+1] = anchor.y + (rng()*2-1)*0.6;
-  pos[i*3+2] = anchor.z + (rng()*2-1)*0.6;
-
-  vel[i*3+0] = 0;
-  vel[i*3+1] = 0;
-  vel[i*3+2] = 0;
-
-  const topic = c % TOPICS.length;
-  const title = `${TOPICS[topic]} — Memory #${i}`;
-  const tags = pickTags(topic);
-  const snippet = `A short snippet about ${TOPICS[topic]} with tags ${tags.join(", ")}.`;
-  const full = `Full text: This is a synthetic memory node for "${TOPICS[topic]}". It exists to test search, hover edges, and selection UX.`;
-
-  // Random timestamp within last ~180 days
-  const t = new Date(now - Math.floor(rng()*180)*dayMs - Math.floor(rng()*dayMs));
-  timestamps[i] = t;
-
-  nodes[i] = {
-    id: i,
-    title,
-    cluster: c,
-    tags,
-    snippet,
-    full,
-    time: t
-  };
+function hideEmptyState() {
+  if (emptyState) emptyState.style.display = "none";
 }
 
 // ---------- Build cluster filter UI ----------
-// Store cluster metadata from backend
 let backendClusterMetadata = null;
 
 function clusterName(c) {
-  // Use backend metadata if available
   if (backendClusterMetadata) {
     const meta = backendClusterMetadata.find(m => m.cluster_id === c);
     if (meta && meta.cluster_name) {
       return `${c} — ${meta.cluster_name}`;
     }
   }
-  // Fallback to topics if using fake data
-  return `${c} — ${TOPICS[c % TOPICS.length]}`;
+  return `Cluster ${c}`;
 }
+// Start with just the "All" option (populated after backend load)
 clusterSel.innerHTML = "";
 const optAll = document.createElement("option");
 optAll.value = "-1";
 optAll.textContent = "All";
 clusterSel.appendChild(optAll);
-for (let c=0; c<CFG.CLUSTERS; c++) {
-  const opt = document.createElement("option");
-  opt.value = String(c);
-  opt.textContent = clusterName(c);
-  clusterSel.appendChild(opt);
-}
 
 // ---------- Points: sprite texture (soft circle) ----------
 function makeCircleSprite(size=64) {
@@ -621,8 +498,7 @@ function topKNeighbors(idx, K) {
   const bestIdx = new Int32Array(K);
   for (let k=0; k<K; k++) { bestSim[k] = -1e9; bestIdx[k] = -1; }
 
-  // Use vector similarity if we have vectors (fake data mode)
-  // Otherwise use spatial distance (backend data mode)
+  // Use vector similarity if vectors are available, otherwise use spatial distance
   const useVectors = vectors[idx] != null;
 
   if (useVectors) {
@@ -820,7 +696,7 @@ function buildAllEdges() {
   edgeGeom.setAttribute("position", new THREE.BufferAttribute(edgePositions, 3));
   edgeGeom.setAttribute("color", new THREE.BufferAttribute(edgeColors, 3));
   edgeGeom.setDrawRange(0, edgeCount * 2);
-  edges.visible = true;
+  edges.visible = edgeCount > 0;
 }
 
 function showEdgesFor(i, strong) {
@@ -841,6 +717,7 @@ function populatePanel(i) {
   pTitle.textContent = n.title;
   pCluster.textContent = clusterName(n.cluster);
   pTime.textContent = fmtDate(n.time);
+  if (pMsgCount) pMsgCount.textContent = n.messageCount != null ? n.messageCount : "—";
   pTags.textContent = n.tags.join(", ");
   pSnippet.textContent = n.full || n.snippet || "";
 
@@ -896,6 +773,7 @@ function clearPanel() {
   pTitle.textContent = "None";
   pCluster.textContent = "—";
   pTime.textContent = "—";
+  if (pMsgCount) pMsgCount.textContent = "—";
   pTags.textContent = "—";
   pSnippet.textContent = "Click a point to inspect. Hover to preview + show neighbor edges.";
   pNeighbors.innerHTML = "";
@@ -1588,7 +1466,7 @@ function rebuildPointsGeometry() {
   aBoostBase = new Float32Array(N);
 
   // Find max cluster ID for color distribution
-  const maxCluster = Math.max(...Array.from(clusterId));
+  const maxCluster = N > 0 ? Math.max(...Array.from(clusterId)) : 1;
 
   for (let i = 0; i < N; i++) {
     const c = clusterId[i];
@@ -1617,18 +1495,21 @@ function rebuildPointsGeometry() {
 // ---------- Backend data bootstrap ----------
 /**
  * Try to load real data from the Cortex backend.
- * If it succeeds and there are nodes, replace the fake data in-place.
- * If it fails (backend offline, no data, etc.) keep the demo data.
+ * If it succeeds and there are nodes, replace the empty data arrays.
+ * If backend returns 0 nodes, show the empty-state overlay.
+ * If backend is unreachable, show empty-state with retry option.
  */
 async function tryLoadBackendData() {
   showLoading("Connecting to Cortex backend…");
+  hideEmptyState();
 
   try {
     // 1. Health check
     const health = await healthCheck();
     if (!health.ollama_connected) {
-      showToast("Ollama is not running — using demo data", "info", 5000);
+      showToast("Ollama is not running — start Ollama and retry", "info", 5000);
       hideLoading();
+      showEmptyState();
       return;
     }
 
@@ -1640,96 +1521,119 @@ async function tryLoadBackendData() {
     if (!viz.nodes || viz.nodes.length === 0) {
       showToast("No conversations yet — upload a chat export to get started", "info", 5000);
       hideLoading();
+      showEmptyState();
       return;
     }
 
-    // 3. Replace fake data with backend data
+    // 3. Populate data arrays from backend
     const N = viz.nodes.length;
 
-    // Resize arrays
     nodes = new Array(N);
-    vectors = new Array(N); // Will be null since we don't need client-side vectors
+    vectors = new Array(N);
     clusterId = new Uint8Array(N);
     timestamps = new Array(N);
     anchors = new Float32Array(N * 3);
     pos = new Float32Array(N * 3);
     vel = new Float32Array(N * 3);
 
-    // Populate from backend data
     const backendClusters = new Set();
     for (let i = 0; i < N; i++) {
       const node = viz.nodes[i];
 
-      // Store node data
       nodes[i] = {
         id: node.id,
         title: node.title || "Untitled",
         cluster: node.cluster_id ?? 0,
         tags: node.topics || [],
         snippet: node.summary || "",
-        full: node.summary || "", // Will be loaded on-demand
+        full: node.summary || "",
         time: new Date(node.created_at),
-        backendId: node.id // Track backend ID for API calls
+        backendId: node.id,
+        messageCount: node.message_count ?? null
       };
 
       clusterId[i] = node.cluster_id ?? 0;
       timestamps[i] = new Date(node.created_at);
       backendClusters.add(node.cluster_id ?? 0);
 
-      // Anchor = UMAP-projected 3D coordinate (spring target)
+      // Anchor = backend-generated 3D coordinate (UMAP projection)
       const [ax, ay, az] = node.position || [0, 0, 0];
       anchors[i * 3 + 0] = ax;
       anchors[i * 3 + 1] = ay;
       anchors[i * 3 + 2] = az;
 
-      // Start current pos near anchor (slight jitter for visual pop-in)
+      // Start pos near anchor with slight jitter for pop-in effect
       pos[i * 3 + 0] = ax + (Math.random() - 0.5) * 0.6;
       pos[i * 3 + 1] = ay + (Math.random() - 0.5) * 0.6;
       pos[i * 3 + 2] = az + (Math.random() - 0.5) * 0.6;
 
-      // Initialize velocity to zero
       vel[i * 3 + 0] = 0;
       vel[i * 3 + 1] = 0;
       vel[i * 3 + 2] = 0;
 
-      // We don't use vectors for backend mode (search is done server-side)
+      // Vectors are null — search is done server-side
       vectors[i] = null;
     }
 
-    // Update CFG.N to match backend data
     CFG.N = N;
 
     // Store cluster metadata globally
     backendClusterMetadata = viz.clusters || null;
 
-    // Rebuild cluster filter dropdown with backend clusters
+    // Rebuild cluster filter dropdown
     rebuildClusterFilter(Array.from(backendClusters).sort((a, b) => a - b), viz.clusters);
 
-    // Rebuild geometry with new data
+    // Rebuild geometry + edges with real data
     rebuildPointsGeometry();
     buildAllEdges();
 
-    showToast(`Loaded ${N} conversations from backend`, "success", 3000);
     backendDataLoaded = true;
-
-    // Build the lookup index
     rebuildIdIndex();
+
     hideLoading();
+    hideEmptyState();
+    showToast(`Loaded ${N} conversations from backend`, "success", 3000);
   } catch (err) {
-    console.warn("[init] Backend unavailable, keeping demo data:", err.message);
+    console.warn("[init] Backend unavailable:", err.message);
 
-    // Show error with retry option
+    // Show loading overlay with retry option
     showLoading(`Connection failed: ${err.message}`, true);
-    showToast("Backend offline — click Retry or use demo data", "error", 6000);
+    showToast("Backend offline — click Retry to reconnect", "error", 6000);
 
-    // Auto-hide after 12 seconds if user doesn't retry
+    // After timeout, hide loading and show empty state
     setTimeout(() => {
       if (loadingOverlay && !loadingOverlay.classList.contains("hidden")) {
         hideLoading();
-        showToast("Using demo data for visualization", "info", 4000);
+        showEmptyState();
       }
     }, 12000);
   }
+}
+
+// ---------- Upload handler for empty-state ----------
+if (emptyUploadInput) {
+  emptyUploadInput.addEventListener("change", async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    hideEmptyState();
+    showLoading("Uploading and processing chat export…");
+
+    try {
+      const result = await uploadChatFile(file);
+      showToast(`Uploaded: ${result.filename || file.name}`, "success", 3000);
+      // Reload backend data to show new conversations
+      await tryLoadBackendData();
+    } catch (err) {
+      console.error("[upload] Failed:", err);
+      showToast(`Upload failed: ${err.message}`, "error", 5000);
+      hideLoading();
+      showEmptyState();
+    } finally {
+      // Reset input so re-uploading the same file works
+      emptyUploadInput.value = "";
+    }
+  });
 }
 
 // Retry button event listener
@@ -1741,8 +1645,15 @@ if (retryButton) {
   });
 }
 
-// Kick off backend loading (non-blocking — animation already runs)
+// Kick off backend loading (non-blocking — animation loop already runs)
+// Show empty state initially while we wait for backend response
+showEmptyState();
 tryLoadBackendData();
 
-// Hide loading overlay after a safety timeout (in case something hangs)
-setTimeout(() => hideLoading(), 12000);
+// Safety timeout in case something hangs
+setTimeout(() => {
+  if (loadingOverlay && !loadingOverlay.classList.contains("hidden")) {
+    hideLoading();
+    if (CFG.N === 0) showEmptyState();
+  }
+}, 15000);

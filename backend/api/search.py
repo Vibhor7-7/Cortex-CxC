@@ -2,9 +2,11 @@
 Search API endpoint.
 
 Provides semantic search using a local vector store + nomic-embed-text embeddings via Ollama.
+Optionally uses Backboard.io for retrieval quality evaluation and reranking.
 """
 
 import time
+import logging
 from typing import List, Dict, Optional
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import or_
@@ -13,7 +15,9 @@ from backend.models import Conversation, Embedding
 from backend.schemas import SearchRequest, SearchResponse, SearchResultItem
 from backend.services.vector_store import search_store, get_vector_store_service
 from backend.services.embedder import generate_embedding
+from backend.services.backboard_evaluator import get_backboard_evaluator, rerank_by_scores
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
@@ -118,12 +122,28 @@ async def search_conversations(request: SearchRequest):
             results.sort(key=lambda x: x.score, reverse=True)
             results = results[: request.limit]
 
+            # Optional Backboard.io evaluation
+            evaluation = None
+            if request.evaluate:
+                evaluator = get_backboard_evaluator()
+                if evaluator.is_available:
+                    logger.info(f"Running Backboard evaluation for query: {request.query}")
+                    evaluation = await evaluator.evaluate_retrieval(request.query, results)
+
+                    # Rerank results based on Backboard relevance scores
+                    if evaluation.relevance_scores:
+                        results = rerank_by_scores(results, evaluation.relevance_scores)
+                        logger.info(f"Reranked {len(results)} results based on Backboard scores")
+                else:
+                    logger.warning("Backboard evaluation requested but API key not configured")
+
             search_time = (time.time() - start_time) * 1000
             return SearchResponse(
                 query=request.query,
                 results=results,
                 total_results=len(results),
                 search_time_ms=search_time,
+                evaluation=evaluation,
             )
 
     except Exception as e:

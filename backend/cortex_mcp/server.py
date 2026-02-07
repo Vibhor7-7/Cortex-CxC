@@ -1,17 +1,22 @@
 import asyncio
+import argparse
 import logging
-from typing import Any
+import sys
+from typing import Any, List
 import httpx
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
-from .config import config
+from .config import config, backboard_config
 
 logging.basicConfig(
     level=getattr(logging, config.log_level),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+# Global flag for guard disable (set via CLI)
+_guard_disabled = False
 
 
 server = Server(config.server_name)
@@ -56,6 +61,33 @@ async def list_tools() -> list[Tool]:
     ]
 
 
+async def _apply_guard_filter(query: str, results: List[dict]) -> tuple[List[dict], int]:
+    """
+    Apply Backboard guard filtering to search results.
+
+    Returns:
+        Tuple of (filtered_results, blocked_count)
+    """
+    global _guard_disabled
+
+    if _guard_disabled or not backboard_config.guard_active:
+        return results, 0
+
+    try:
+        from backend.services.backboard_guard import get_relevance_guard
+        guard = get_relevance_guard()
+
+        if not guard.is_available:
+            return results, 0
+
+        filtered = await guard.filter_relevant_memories(query, results)
+        blocked_count = len(results) - len(filtered)
+        return filtered, blocked_count
+    except Exception as e:
+        logger.warning(f"Guard filtering failed: {e}")
+        return results, 0
+
+
 @server.call_tool()
 async def call_tool(name: str, arguments: Any) -> list[TextContent]:
     try:
@@ -74,10 +106,16 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                 data = response.json()
                 results = data.get('results', [])
 
+                # Apply Backboard guard filtering
+                results, blocked_count = await _apply_guard_filter(query, results)
+
                 if not results:
+                    guard_note = ""
+                    if blocked_count > 0:
+                        guard_note = f"\n[GUARD] {blocked_count} low-confidence result(s) were filtered."
                     return [TextContent(
                         type="text",
-                        text=f"No conversations found matching '{query}'. Try using different keywords or broader terms."
+                        text=f"No conversations found matching '{query}'. Try using different keywords or broader terms.{guard_note}"
                     )]
 
                 formatted_results = []
@@ -107,11 +145,16 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                     formatted_results.append(result_text)
 
                 search_time = data.get('search_time_ms', 0)
-                header = f"Found {len(results)} relevant conversation(s) for '{query}' (searched in {search_time:.0f}ms)\n\n"
+                header = f"Found {len(results)} relevant conversation(s) for '{query}' (searched in {search_time:.0f}ms)\n"
+
+                # Add guard status if results were filtered
+                guard_status = ""
+                if blocked_count > 0:
+                    guard_status = f"[GUARD] {blocked_count} low-confidence result(s) were filtered.\n"
 
                 return [TextContent(
                     type="text",
-                    text=header + "\n\n".join(formatted_results)
+                    text=header + guard_status + "\n" + "\n\n".join(formatted_results)
                 )]
 
             elif name == "fetch_chat":
@@ -193,9 +236,34 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
         )]
 
 
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description="CORTEX Memory MCP Server")
+    parser.add_argument(
+        "--disable-guard",
+        action="store_true",
+        help="Disable Backboard relevance guard filtering"
+    )
+    return parser.parse_args()
+
+
 async def main():
+    global _guard_disabled
+
+    # Parse CLI arguments
+    args = parse_args()
+    _guard_disabled = args.disable_guard
+
     logger.info(f"Starting {config.server_name} v{config.server_version}")
     logger.info(f"Backend API URL: {config.backend_api_url}")
+
+    # Log guard status
+    if _guard_disabled:
+        logger.info("Backboard guard: DISABLED (via --disable-guard flag)")
+    elif backboard_config.guard_active:
+        logger.info(f"Backboard guard: ENABLED (threshold: {backboard_config.guard_threshold})")
+    else:
+        logger.info("Backboard guard: DISABLED (API key not configured)")
 
     async with stdio_server() as (read_stream, write_stream):
         await server.run(

@@ -47,12 +47,26 @@
 
     <div id="results"></div>
 
+    <!-- Empty state (shown when no conversations loaded) -->
+    <div id="emptyState" style="display: none;">
+      <div class="emptyCard">
+        <div class="emptyIcon">🧠</div>
+        <h2>No memories yet</h2>
+        <p>Upload your first chat export to begin exploring your AI conversation space.</p>
+        <label class="pillBtn emptyUploadBtn">
+          <input type="file" id="emptyUploadInput" accept=".html" style="display:none" />
+          ↑ Upload Chat Export (.html)
+        </label>
+      </div>
+    </div>
+
     <div id="panel">
       <div class="muted">Selected memory</div>
       <h3 id="pTitle">None</h3>
       <div class="kv">
         <div>Cluster</div><div id="pCluster">—</div>
         <div>Time</div><div id="pTime">—</div>
+        <div>Messages</div><div id="pMsgCount">—</div>
         <div>Tags</div><div id="pTags">—</div>
       </div>
       <div class="snippet" id="pSnippet">Click a point to inspect. Hover to preview + show neighbor edges.</div>
