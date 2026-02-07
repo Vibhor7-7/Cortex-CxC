@@ -8,7 +8,11 @@ Run this with the backend API running.
 
 import asyncio
 import httpx
-from config import config
+
+try:
+    from backend.cortex_mcp.config import config
+except ImportError:
+    from config import config
 
 
 async def test_search_memory():

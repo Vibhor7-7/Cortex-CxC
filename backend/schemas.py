@@ -130,6 +130,15 @@ class SearchResultItem(BaseModel):
     topics: List[str]
     cluster_id: Optional[int] = None
     cluster_name: Optional[str] = None
+    message_count: int
+    created_at: datetime
+    start_x: float
+    start_y: float
+    start_z: float
+    end_x: float
+    end_y: float
+    end_z: float
+    magnitude: float
     score: float
     message_preview: Optional[str] = None  # Preview of relevant message content
     relevance_score: Optional[float] = None  # Backboard evaluation score (0.0-1.0)

@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 from backend.database import get_db_context
 from backend.models import Conversation, Message, Embedding, MessageRole
 from backend.schemas import IngestResponse, IngestBatchResponse
-from backend.parsers import parse_html, parse_all_html, detect_format
+from backend.parsers import parse_html, detect_format
+from backend.parsers.chatgpt_parser import ChatGPTParser
 from backend.services.normalizer import normalize_conversation
 from backend.services.summarizer import summarize_conversation
 from backend.services.embedder import generate_embedding, prepare_text_for_embedding
@@ -33,17 +34,20 @@ async def ingest_single_chat(
     """
     Ingest a single chat HTML file.
 
-    The file may contain **multiple** conversations (e.g. a ChatGPT bulk
-    export).  Every conversation found is ingested.  The response reports
-    on the *last* conversation processed; use the ``/batch`` endpoint for
-    richer per-file feedback.
+    Accepts ChatGPT or Claude HTML exports, parses them, generates embeddings,
+    and stores in the database.
 
     Args:
         file: HTML chat export file (ChatGPT or Claude format)
-        auto_reprocess: If True, re-run UMAP/clustering after ingestion
+        auto_reprocess: If True, automatically re-run UMAP/clustering after ingestion (default: False)
 
     Returns:
         IngestResponse with conversation ID and metadata
+
+    Error Codes:
+        400: Invalid file format (non-HTML)
+        422: Unable to parse HTML or empty conversation
+        500: Server error (embedding generation failed, database error, etc.)
     """
     start_time = time.time()
 
@@ -67,126 +71,173 @@ async def ingest_single_chat(
                 detail="Unable to detect chat format (ChatGPT/Claude)"
             )
 
-        # Parse ALL conversations from the file
-        all_conversations = parse_all_html(html_content)
-        if not all_conversations:
+        # Parse HTML (support multiple conversations in a single ChatGPT export)
+        if format_type == "chatgpt":
+            parser = ChatGPTParser(html_content)
+            parsed_conversations = parser.parse_all()
+        else:
+            parsed = parse_html(html_content)
+            parsed_conversations = [parsed] if parsed else []
+
+        # Filter out empty parses
+        parsed_conversations = [
+            c for c in parsed_conversations
+            if c and c.get("messages")
+        ]
+
+        if not parsed_conversations:
             raise HTTPException(
                 status_code=422,
-                detail="No conversations found in the uploaded file"
+                detail="Failed to parse HTML file"
             )
 
-        print(f"[ingest] Found {len(all_conversations)} conversation(s) in {file.filename}")
+        print(f"[ingest] Found {len(parsed_conversations)} conversation(s) in {file.filename}")
 
+        results: List[IngestResponse] = []
         last_id = None
         last_title = None
         total_messages = 0
         ingested = 0
 
-        for conv_idx, parsed_data in enumerate(all_conversations):
-            messages = parsed_data.get('messages', [])
-            if not messages:
-                print(f"  [skip] conversation #{conv_idx}: no messages")
-                continue
-
-            # Normalize
-            normalized = normalize_conversation(parsed_data, messages)
-
-            # Summarise
+        for conv_idx, parsed_data in enumerate(parsed_conversations):
             try:
-                summary, topics = await summarize_conversation(normalized['messages'])
-            except Exception as e:
-                print(f"  [warn] Summarization failed for conv #{conv_idx}: {e}")
-                summary = f"Conversation with {normalized['message_count']} messages"
-                topics = []
+                messages = parsed_data.get('messages', [])
+                if not messages:
+                    print(f"  [skip] conversation #{conv_idx}: no messages")
+                    continue
 
-            conversation_id = str(uuid.uuid4())
-
-            # Embedding
-            embedding_text = prepare_text_for_embedding(
-                title=normalized['title'],
-                summary=summary,
-                topics=topics,
-                messages=normalized['messages']
-            )
-            try:
-                embedding_vector = await generate_embedding(
-                    embedding_text,
-                    conversation_id=conversation_id
+                # Normalize conversation
+                normalized = normalize_conversation(
+                    parsed_data,
+                    messages
                 )
-            except Exception as e:
-                print(f"  [error] Embedding failed for conv #{conv_idx} ({normalized['title']}): {e}")
-                continue  # skip this conversation, don't fail the whole upload
 
-            vector_3d = [0.0, 0.0, 0.0]
+                # Generate summary and topics using LLM
+                try:
+                    summary, topics = await summarize_conversation(normalized['messages'])
+                except Exception as e:
+                    # If summarization fails, use fallback
+                    print(f"Warning: Summarization failed: {e}")
+                    summary = f"Conversation with {normalized['message_count']} messages"
+                    topics = []
 
-            # Persist to DB
-            with get_db_context() as db:
-                conversation = Conversation(
-                    id=conversation_id,
+                # Create conversation ID
+                conversation_id = str(uuid.uuid4())
+
+                # Prepare text for embedding
+                embedding_text = prepare_text_for_embedding(
                     title=normalized['title'],
                     summary=summary,
                     topics=topics,
-                    cluster_id=0,
-                    cluster_name="Unclustered",
-                    message_count=normalized['message_count'],
-                    created_at=normalized['created_at']
+                    messages=normalized['messages']
                 )
-                db.add(conversation)
 
-                for msg in normalized['messages']:
-                    message = Message(
-                        id=str(uuid.uuid4()),
-                        conversation_id=conversation_id,
-                        role=MessageRole(msg['role']),
-                        content=msg['content'],
-                        sequence_number=msg['sequence_number']
+                # Generate embedding
+                try:
+                    embedding_vector = await generate_embedding(
+                        embedding_text,
+                        conversation_id=conversation_id
                     )
-                    db.add(message)
+                except Exception as e:
+                    print(f"  [error] Embedding failed for conv #{conv_idx} ({normalized['title']}): {e}")
+                    continue
 
-                embedding = Embedding(
-                    conversation_id=conversation_id,
-                    embedding_384d=embedding_vector,
-                    vector_3d=vector_3d,
-                    start_x=0.0, start_y=0.0, start_z=0.0,
-                    end_x=0.0,   end_y=0.0,   end_z=0.0,
-                    magnitude=1.0
-                )
-                db.add(embedding)
-                db.commit()
+                # For now, store with placeholder 3D coordinates
+                # In a full implementation, we would re-run UMAP on all conversations
+                vector_3d = [0.0, 0.0, 0.0]
 
-            # Vector store
-            try:
-                conversation_data = {
-                    'title': normalized['title'],
-                    'summary': summary,
-                    'topics': topics,
-                    'messages': normalized['messages']
-                }
-                await upsert_conversation_to_store(
-                    conversation_id=conversation_id,
-                    conversation_data=conversation_data,
-                    embedding=embedding_vector,
+                # Save to database
+                with get_db_context() as db:
+                    # Create conversation
+                    conversation = Conversation(
+                        id=conversation_id,
+                        title=normalized['title'],
+                        summary=summary,
+                        topics=topics,
+                        cluster_id=0,
+                        cluster_name="Unclustered",
+                        message_count=normalized['message_count'],
+                        created_at=normalized['created_at']
+                    )
+                    db.add(conversation)
+
+                    # Create messages
+                    for msg in normalized['messages']:
+                        message = Message(
+                            id=str(uuid.uuid4()),
+                            conversation_id=conversation_id,
+                            role=MessageRole(msg['role']),
+                            content=msg['content'],
+                            sequence_number=msg['sequence_number']
+                        )
+                        db.add(message)
+
+                    # Create embedding
+                    embedding = Embedding(
+                        conversation_id=conversation_id,
+                        embedding_384d=embedding_vector,
+                        vector_3d=vector_3d,
+                        start_x=0.0,
+                        start_y=0.0,
+                        start_z=0.0,
+                        end_x=vector_3d[0],
+                        end_y=vector_3d[1],
+                        end_z=vector_3d[2],
+                        magnitude=1.0
+                    )
+                    db.add(embedding)
+
+                    db.commit()
+
+                # Upsert conversation into local vector store
+                try:
+                    print(f"Upserting conversation {conversation_id} into vector store")
+                    conversation_data = {
+                        'title': normalized['title'],
+                        'summary': summary,
+                        'topics': topics,
+                        'messages': normalized['messages']
+                    }
+                    await upsert_conversation_to_store(
+                        conversation_id=conversation_id,
+                        conversation_data=conversation_data,
+                        embedding=embedding_vector,
+                    )
+                    print(f"[OK] Conversation indexed in vector store: {conversation_id}")
+                except Exception as e:
+                    # Don't fail ingestion if vector store upsert fails
+                    print(f"Warning: Vector store upsert failed: {e}")
+
+                results.append(
+                    IngestResponse(
+                        success=True,
+                        conversation_id=conversation_id,
+                        title=normalized['title'],
+                        message_count=normalized['message_count'],
+                        error=None,
+                        processing_time_ms=0
+                    )
                 )
+                ingested += 1
+                total_messages += normalized['message_count']
+                last_id = conversation_id
+                last_title = normalized['title']
             except Exception as e:
-                print(f"  [warn] Vector store upsert failed: {e}")
-
-            ingested += 1
-            total_messages += normalized['message_count']
-            last_id = conversation_id
-            last_title = normalized['title']
-            print(f"  [ok] #{conv_idx+1}/{len(all_conversations)}: {normalized['title']} ({normalized['message_count']} msgs)")
+                print(f"Warning: Failed to ingest one conversation: {e}")
+                continue
 
         if ingested == 0:
             raise HTTPException(status_code=422, detail="All conversations in the file were empty or failed processing")
 
-        # Reprocess UMAP + clustering so nodes get real 3D coordinates
-        if auto_reprocess or ingested > 1:
+        # Trigger automatic reprocessing if requested (once)
+        if auto_reprocess:
             try:
-                print(f"[ingest] Auto-reprocessing {ingested} new conversations…")
+                print("Auto-reprocessing: Running UMAP and clustering")
                 await reprocess_all_conversations()
-                print("[ingest] Reprocessing complete")
+                print("Auto-reprocessing completed successfully")
             except Exception as e:
-                print(f"[warn] Reprocessing failed (positions will be at origin): {e}")
+                print(f"Warning: Auto-reprocessing failed: {e}")
+                # Don't fail the ingestion if reprocessing fails
 
         processing_time = (time.time() - start_time) * 1000
 
@@ -315,7 +366,7 @@ async def reprocess_all_conversations():
             ).all()
             # Build a lookup so order matches conversation_ids
             conv_map = {c.id: c for c in conversations}
-            all_topics = [conv_map[cid].topics if cid in conv_map else [] for cid in conversation_ids]
+            all_topics = [conv_map[cid].topics or [] if cid in conv_map else [] for cid in conversation_ids]
             all_titles = [conv_map[cid].title if cid in conv_map else "" for cid in conversation_ids]
 
             # 2. Run UMAP dimensionality reduction

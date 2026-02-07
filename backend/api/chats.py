@@ -79,7 +79,7 @@ async def get_visualization_data():
                     id=conv.id,
                     title=conv.title,
                     summary=conv.summary,
-                    topics=conv.topics,
+                    topics=conv.topics or [],
                     cluster_id=conv.cluster_id,
                     cluster_name=conv.cluster_name,
                     message_count=conv.message_count,

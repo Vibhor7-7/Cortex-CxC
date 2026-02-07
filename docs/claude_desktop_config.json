@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "cortex-memory": {
+      "command": "python",
+      "args": ["-m", "backend.cortex_mcp.server"],
+      "cwd": "/Users/tanayj/Cortex-CxC"
+    }
+  }
+}
