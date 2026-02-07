@@ -11,6 +11,12 @@ cd /Users/tanayj/Cortex-CxC/backend
 python -m cortex_mcp.server
 ```
 
+From repo root:
+
+```bash
+python -m backend.cortex_mcp.server
+```
+
 ### Configuration
 
 Set environment variables in `.env` (optional, using MCP_ prefix):
@@ -35,7 +41,21 @@ Search through chat history and context to find relevant past conversations.
 Fetch a specific chat conversation by ID.
 
 **Parameters:**
-- `chat_id` (string, required): The chat ID to fetch
+- `conversation_id` (string, required): The conversation ID to fetch
+
+## Testing
+
+Backend API test (no MCP transport):
+
+```bash
+python backend/cortex_mcp/test_mcp.py
+```
+
+MCP stdio client test:
+
+```bash
+python backend/cortex_mcp/test_client.py
+```
 
 ## Integration with Claude Desktop
 

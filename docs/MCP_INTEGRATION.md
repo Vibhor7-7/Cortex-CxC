@@ -37,7 +37,7 @@ Searches through your chat history using hybrid semantic + keyword search.
 
 **Returns:**
 - List of relevant conversations with:
-  - Chat ID
+  - Conversation ID
   - Relevance score
   - Summary
 
@@ -53,18 +53,18 @@ Searches through your chat history using hybrid semantic + keyword search.
 Retrieves a complete chat conversation by ID.
 
 **Parameters:**
-- `chat_id` (string, required): The ID of the chat to fetch
+- `conversation_id` (string, required): The ID of the conversation to fetch
 
 **Returns:**
 - Complete chat details including:
-  - Chat ID
+  - Conversation ID
   - Creation timestamp
   - All messages with roles and content
 
 **Example:**
 ```json
 {
-  "chat_id": "conv_abc123"
+  "conversation_id": "conv_abc123"
 }
 ```
 
@@ -120,6 +120,20 @@ Add the following configuration:
 ```
 
 **Important:** Update the `cwd` path to match your actual Cortex installation directory.
+Template: `docs/claude_desktop_config.json`.
+
+If you prefer running from repo root, use:
+```json
+{
+  "mcpServers": {
+    "cortex-memory": {
+      "command": "python",
+      "args": ["-m", "backend.cortex_mcp.server"],
+      "cwd": "/Users/tanayj/Cortex-CxC"
+    }
+  }
+}
+```
 
 ### 5. Restart Claude Desktop
 
@@ -194,12 +208,18 @@ The server will start and wait for stdio input. You can test it by sending MCP p
 4. Ask: "Search my memory for [topic you uploaded]"
 5. Verify Claude returns relevant results
 
+### MCP stdio Client Test
+
+```bash
+python backend/cortex_mcp/test_client.py
+```
+
 ## API Endpoints Used
 
 The MCP server communicates with these Cortex backend endpoints:
 
 - `POST /api/search` - For the `search_memory` tool
-- `GET /api/chats/{chat_id}` - For the `fetch_chat` tool
+- `GET /api/chats/{conversation_id}` - For the `fetch_chat` tool
 
 Make sure these endpoints are working correctly.
 
