@@ -1,0 +1,33 @@
+fastapi>=0.110
+uvicorn[standard]>=0.27
+
+# Config
+python-dotenv>=1.0
+
+# Uploads + HTTP
+python-multipart>=0.0.9
+httpx>=0.26
+
+# Data validation
+pydantic>=2.6
+pydantic-settings>=2.2
+
+# Database
+sqlalchemy>=2.0
+
+# HTML parsing
+beautifulsoup4>=4.12
+lxml>=5.1
+
+# ML / embeddings
+numpy>=1.26
+scikit-learn>=1.4
+umap-learn>=0.5
+
+# OpenAI (embeddings + Vector Stores)
+openai>=1.12.0
+tiktoken>=0.6.0
+tenacity>=8.2.3
+
+# Optional: MCP SDK (enable when wiring MCP server)
+mcp>=0.1.0
