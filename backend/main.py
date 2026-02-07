@@ -38,30 +38,30 @@ async def lifespan(app: FastAPI):
     Handles startup and shutdown events.
     """
     # Startup
-    print(" Starting CORTEX backend...")
+    print("Starting CORTEX backend")
     
     # Initialize database
     try:
         init_db()
-        print(" Database initialized successfully")
+        print("Database initialized successfully")
     except Exception as e:
-        print(f"  Database initialization error: {e}")
+        print(f"Database initialization error: {e}")
     
     # Verify Ollama is reachable
     try:
         import httpx
         resp = httpx.get(os.getenv("OLLAMA_BASE_URL", "http://localhost:11434") + "/api/tags", timeout=3)
         model_names = [m["name"] for m in resp.json().get("models", [])]
-        print(f"✅ Ollama connected — models: {', '.join(model_names)}")
+        print(f"[OK] Ollama connected - models: {', '.join(model_names)}")
     except Exception:
-        print("⚠️  Warning: Ollama not reachable at localhost:11434 (summarization & embeddings will fail)")
+        print("[WARNING] Ollama not reachable at localhost:11434 (summarization & embeddings will fail)")
     
     print("CORTEX backend ready!")
     
     yield
     
     # Shutdown
-    print("Shutting down CORTEX backend...")
+    print("Shutting down CORTEX backend")
     engine.dispose()
     print("Goodbye!")
 

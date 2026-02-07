@@ -173,37 +173,43 @@ def main():
     try:
         # Drop existing tables if requested
         if args.drop:
-            print("\n  WARNING: Dropping all existing tables...")
+            print("")
+            print("[WARNING] Dropping all existing tables")
             response = input("Are you sure? This will delete all data! (yes/no): ")
             if response.lower() == "yes":
                 drop_db()
-                print(" Dropped all tables")
+                print("Dropped all tables")
             else:
-                print(" Aborted")
+                print("Aborted")
                 return
-        
+
         # Create tables
-        print("\nCreating database tables...")
+        print("")
+        print("Creating database tables")
         init_db()
-        print(" Successfully created all tables:")
+        print("Successfully created all tables:")
         print("   - conversations")
         print("   - messages")
         print("   - embeddings")
-        
+
         # Add sample data if requested
         if args.seed:
-            print("\n🌱 Seeding database with sample data...")
+            print("")
+            print("Seeding database with sample data")
             create_sample_data()
-        
-        print("\n" + "=" * 60)
+
+        print("")
+        print("=" * 60)
         print("Database initialization complete!")
         print("=" * 60)
-        print("\nYou can now start the backend server:")
+        print("")
+        print("You can now start the backend server:")
         print("  uvicorn backend.main:app --reload")
-        print()
-        
+        print("")
+
     except Exception as e:
-        print(f"\n Error during initialization: {e}")
+        print("")
+        print(f"Error during initialization: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)

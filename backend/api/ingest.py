@@ -173,7 +173,7 @@ async def ingest_single_chat(
 
         # Upsert conversation into local vector store
         try:
-            print(f"Upserting conversation {conversation_id} into vector store...")
+            print(f"Upserting conversation {conversation_id} into vector store")
             conversation_data = {
                 'title': normalized['title'],
                 'summary': summary,
@@ -185,7 +185,7 @@ async def ingest_single_chat(
                 conversation_data=conversation_data,
                 embedding=embedding_vector,
             )
-            print(f"✅ Conversation indexed in vector store: {conversation_id}")
+            print(f"[OK] Conversation indexed in vector store: {conversation_id}")
         except Exception as e:
             # Don't fail ingestion if vector store upsert fails
             print(f"Warning: Vector store upsert failed: {e}")
@@ -193,7 +193,7 @@ async def ingest_single_chat(
         # Trigger automatic reprocessing if requested
         if auto_reprocess:
             try:
-                print(f"Auto-reprocessing: Running UMAP and clustering...")
+                print("Auto-reprocessing: Running UMAP and clustering")
                 await reprocess_all_conversations()
                 print("Auto-reprocessing completed successfully")
             except Exception as e:
@@ -272,7 +272,7 @@ async def ingest_batch_chats(
     # Trigger automatic reprocessing if requested and we had successful ingestions
     if auto_reprocess and successful > 0:
         try:
-            print(f"Auto-reprocessing: Running UMAP and clustering on all conversations...")
+            print("Auto-reprocessing: Running UMAP and clustering on all conversations")
             await reprocess_all_conversations()
             print("Auto-reprocessing completed successfully")
         except Exception as e:

@@ -41,16 +41,16 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="fetch_chat",
-            description="Fetch a specific chat conversation by ID",
+            description="Retrieve full content and messages from a specific conversation by ID. Returns complete conversation history with all messages in chronological order, including timestamps and metadata.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "chat_id": {
+                    "conversation_id": {
                         "type": "string",
-                        "description": "The ID of the chat to fetch"
+                        "description": "UUID of the conversation to fetch"
                     }
                 },
-                "required": ["chat_id"]
+                "required": ["conversation_id"]
             }
         )
     ]
@@ -67,7 +67,7 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                 limit = arguments.get("limit", 5)
 
                 response = await client.post(
-                    f"{config.backend_api_url}/api/search",
+                    f"{config.backend_api_url}/api/search/",
                     json={"query": query, "limit": limit}
                 )
                 response.raise_for_status()
@@ -115,23 +115,65 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                 )]
 
             elif name == "fetch_chat":
-                chat_id = arguments.get("chat_id")
+                conversation_id = arguments.get("conversation_id")
+
+                if not conversation_id:
+                    return [TextContent(
+                        type="text",
+                        text="Error: conversation_id parameter is required"
+                    )]
 
                 response = await client.get(
-                    f"{config.backend_api_url}/chats/{chat_id}"
+                    f"{config.backend_api_url}/api/chats/{conversation_id}"
                 )
                 response.raise_for_status()
-                chat = response.json()
+                data = response.json()
+
+                result_text = f"**Conversation Details**\n\n"
+                result_text += f"- **ID**: {data.get('id', 'N/A')}\n"
+                result_text += f"- **Title**: {data.get('title', 'Untitled')}\n"
+
+                summary = data.get('summary')
+                if summary:
+                    result_text += f"- **Summary**: {summary}\n"
+
+                topics = data.get('topics', [])
+                if topics:
+                    result_text += f"- **Topics**: {', '.join(topics)}\n"
+
+                cluster = data.get('cluster_name')
+                if cluster:
+                    result_text += f"- **Cluster**: {cluster}\n"
+
+                message_count = data.get('message_count', 0)
+                result_text += f"- **Message Count**: {message_count}\n"
+
+                created_at = data.get('created_at')
+                if created_at:
+                    result_text += f"- **Created**: {created_at}\n"
+
+                messages = data.get('messages', [])
+                if messages:
+                    result_text += f"\n**Conversation Transcript** ({len(messages)} messages):\n\n"
+                    result_text += "=" * 80 + "\n\n"
+
+                    for msg in messages:
+                        role = msg.get('role', 'unknown').upper()
+                        content = msg.get('content', '')
+                        timestamp = msg.get('created_at', '')
+
+                        result_text += f"**{role}**"
+                        if timestamp:
+                            result_text += f" (at {timestamp})"
+                        result_text += ":\n"
+                        result_text += f"{content}\n\n"
+                        result_text += "-" * 80 + "\n\n"
+                else:
+                    result_text += "\nNo messages found in this conversation.\n"
 
                 return [TextContent(
                     type="text",
-                    text=f"Chat ID: {chat['id']}\n"
-                         f"Created: {chat.get('created_at', 'Unknown')}\n\n"
-                         f"Messages:\n" +
-                         "\n\n".join([
-                             f"{msg.get('role', 'unknown')}: {msg.get('content', '')}"
-                             for msg in chat.get('messages', [])
-                         ])
+                    text=result_text
                 )]
 
             else:
