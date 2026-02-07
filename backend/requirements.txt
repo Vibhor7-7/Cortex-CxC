@@ -29,5 +29,5 @@ openai>=1.12.0
 tiktoken>=0.6.0
 tenacity>=8.2.3
 
-# Optional: MCP SDK (enable when wiring MCP server)
-mcp>=0.1.0
+# MCP SDK
+mcp>=1.0.0
