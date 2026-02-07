@@ -100,10 +100,20 @@ canvas { display: block; }
   padding: 6px 10px;
   font-size: 12px;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .pillBtn:hover {
   border-color: rgba(160, 200, 255, 0.4);
+}
+
+.pillBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pillBtn.ghost {
+  background: transparent;
 }
 
 select {
@@ -141,6 +151,23 @@ input[type="range"] {
   pointer-events: auto;
   display: none;
   animation: floatIn 420ms ease-out both;
+}
+
+.resItem .resCheck {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.resItem input[type="checkbox"] {
+  accent-color: rgba(150, 200, 255, 0.9);
+}
+
+.resItem.selected {
+  background: rgba(120, 170, 255, 0.18);
+  outline: 1px solid rgba(120, 170, 255, 0.35);
 }
 
 .resItem {
@@ -359,6 +386,55 @@ input[type="range"] {
   background: rgba(255,255,255,0.06);
   color: rgba(230,240,255,0.80);
   font-size: 11px;
+}
+
+/* Prompt modal */
+#promptModal {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 6, 12, 0.68);
+  backdrop-filter: blur(8px);
+  display: none;
+  pointer-events: auto;
+}
+
+.promptCard {
+  position: absolute;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(720px, calc(100vw - 28px));
+  background: rgba(10, 14, 26, 0.92);
+  border: 1px solid rgba(140, 190, 255, 0.22);
+  border-radius: 18px;
+  padding: 16px;
+  box-shadow: 0 18px 60px rgba(0,0,0,0.55);
+}
+
+.promptHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+#promptText {
+  width: 100%;
+  min-height: 220px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.promptActions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 12px;
 }
 
 @keyframes floatIn {

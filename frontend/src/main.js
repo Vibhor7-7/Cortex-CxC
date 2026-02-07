@@ -47,6 +47,13 @@ const pointSizeLabel = document.getElementById("pointSizeLabel");
 const kNNRange = document.getElementById("kNN");
 const kNNLabel = document.getElementById("kNNLabel");
 const resetViewBtn = document.getElementById("resetView");
+const selectedCountEl = document.getElementById("selectedCount");
+const genPromptBtn = document.getElementById("genPrompt");
+const clearSelectedBtn = document.getElementById("clearSelected");
+const promptModal = document.getElementById("promptModal");
+const promptText = document.getElementById("promptText");
+const copyPromptBtn = document.getElementById("copyPrompt");
+const closePromptBtn = document.getElementById("closePrompt");
 
 const pTitle = document.getElementById("pTitle");
 const pCluster = document.getElementById("pCluster");
@@ -515,6 +522,7 @@ scene.add(edges);
 // ---------- Hover/Select state ----------
 let hovered = -1;
 let selected = -1;
+const selectedSet = new Set();
 
 // Search state
 let currentResults = [];
@@ -854,15 +862,24 @@ function showResults(list) {
     const i = list[r][1];
     const div = document.createElement("div");
     div.className = "resItem" + (r===0 ? " active" : "");
+    if (selectedSet.has(i)) div.classList.add("selected");
     div.innerHTML = `
       <div class="resTitle">${nodes[i].title}</div>
-      <div class="resMeta">${sim.toFixed(2)}</div>
+      <div class="resCheck">
+        <input type="checkbox" ${selectedSet.has(i) ? "checked" : ""} />
+        <span>${sim.toFixed(2)}</span>
+      </div>
     `;
     div.addEventListener("mouseenter", () => setActiveResult(r));
-    div.addEventListener("click", () => {
+    div.addEventListener("click", (e) => {
+      const isCheckbox = e.target && e.target.tagName === "INPUT";
+      if (isCheckbox) {
+        toggleSelectedChat(i);
+        div.classList.toggle("selected", selectedSet.has(i));
+        return;
+      }
       setSelected(i);
       focusNode(i);
-      hideResults();
     });
     resultsEl.appendChild(div);
   }
@@ -888,7 +905,6 @@ function selectActiveResult() {
   const i = currentResults[activeResIndex][1];
   setSelected(i);
   focusNode(i);
-  hideResults();
   searchEl.blur();
 }
 
@@ -940,6 +956,63 @@ function setK(k) {
 kNNRange.addEventListener("input", () => setK(parseInt(kNNRange.value, 10)));
 setK(parseInt(kNNRange.value, 10));
 resetViewBtn.addEventListener("click", () => resetCamera());
+
+function updateSelectedUI() {
+  const count = selectedSet.size;
+  selectedCountEl.textContent = String(count);
+  const ok = count >= 2 && count <= 5;
+  genPromptBtn.disabled = !ok;
+  clearSelectedBtn.disabled = count === 0;
+}
+
+function toggleSelectedChat(i) {
+  if (selectedSet.has(i)) selectedSet.delete(i);
+  else selectedSet.add(i);
+  updateSelectedUI();
+}
+
+function buildContextPack(ids) {
+  const items = ids.map((id) => nodes[id]);
+  const insights = items.map((n) => {
+    const tags = n.tags.slice(0, 2).join(", ");
+    return `${n.title} (${tags})`;
+  });
+  const bullets = insights.map((s) => `• ${s}`).join("\n");
+  return `Relevant past context:\n${bullets}\n\nInstructions:\n- Use the context pack to continue the thread.\n- Avoid repeating raw chat logs; summarize and reference insights.`;
+}
+
+function openPromptModal() {
+  const ids = Array.from(selectedSet).slice(0, 5);
+  promptText.value = buildContextPack(ids);
+  promptModal.style.display = "block";
+}
+
+function closePromptModal() {
+  promptModal.style.display = "none";
+}
+
+genPromptBtn.addEventListener("click", () => openPromptModal());
+clearSelectedBtn.addEventListener("click", () => {
+  selectedSet.clear();
+  updateSelectedUI();
+  showResults(currentResults);
+});
+
+copyPromptBtn.addEventListener("click", async () => {
+  const text = promptText.value;
+  try {
+    await navigator.clipboard.writeText(text);
+    copyPromptBtn.textContent = "Copied";
+    setTimeout(() => (copyPromptBtn.textContent = "Copy"), 900);
+  } catch {
+    promptText.select();
+  }
+});
+
+closePromptBtn.addEventListener("click", () => closePromptModal());
+promptModal.addEventListener("click", (e) => {
+  if (e.target === promptModal) closePromptModal();
+});
 
 // ---------- Keyboard ----------
 const keys = new Set();
@@ -1243,6 +1316,7 @@ document.addEventListener("pointerlockchange", () => {
 
 // ---------- Initial panel ----------
 clearPanel();
+updateSelectedUI();
 
 // ---------- Build all edges at startup ----------
 buildAllEdges();

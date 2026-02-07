@@ -36,6 +36,13 @@
       <div class="pill">
         <button id="resetView" class="pillBtn" type="button">Reset view</button>
       </div>
+
+      <div class="pill">
+        <label>Selected</label>
+        <span class="badge" id="selectedCount">0</span>
+        <button id="genPrompt" class="pillBtn" type="button" disabled>Generate system prompt</button>
+        <button id="clearSelected" class="pillBtn ghost" type="button" disabled>Clear</button>
+      </div>
     </div>
 
     <div id="results"></div>
@@ -89,6 +96,20 @@
         <div class="small">
           Other: <span class="kbd">/</span> focuses search, <span class="kbd">↑</span>/<span class="kbd">↓</span> navigate results, <span class="kbd">Enter</span> selects,
           <span class="kbd">Esc</span> clears selection, <span class="kbd">?</span> toggles this panel.
+        </div>
+      </div>
+    </div>
+
+    <div id="promptModal">
+      <div class="promptCard">
+        <div class="promptHeader">
+          <h3>System Prompt</h3>
+          <div class="muted">Context Pack generated from selected chats</div>
+        </div>
+        <textarea id="promptText" readonly></textarea>
+        <div class="promptActions">
+          <button id="copyPrompt" class="pillBtn" type="button">Copy</button>
+          <button id="closePrompt" class="pillBtn ghost" type="button">Back</button>
         </div>
       </div>
     </div>
