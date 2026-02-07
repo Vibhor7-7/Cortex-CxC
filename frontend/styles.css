@@ -34,6 +34,7 @@ canvas { display: block; }
   position: absolute; top: var(--ui-pad); left: var(--ui-pad); right: calc(var(--ui-pad) + var(--panel-w) + var(--panel-gap));
   display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
   pointer-events: auto;
+  animation: floatIn 520ms ease-out both;
 }
 
 .searchWrap {
@@ -46,6 +47,7 @@ canvas { display: block; }
   backdrop-filter: blur(10px);
   box-shadow: 0 10px 30px rgba(0,0,0,0.35);
   min-width: 260px;
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
 }
 
 #search {
@@ -70,6 +72,14 @@ canvas { display: block; }
   box-shadow: 0 10px 30px rgba(0,0,0,0.35);
   user-select: none;
   flex: 0 0 auto;
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.searchWrap:hover,
+.pill:hover {
+  border-color: rgba(160, 200, 255, 0.35);
+  box-shadow: 0 14px 38px rgba(0,0,0,0.45);
+  transform: translateY(-1px);
 }
 
 .pill label {
@@ -80,6 +90,20 @@ canvas { display: block; }
 
 .pill select, .pill input[type="range"] {
   pointer-events: auto;
+}
+
+.pillBtn {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pillBtn:hover {
+  border-color: rgba(160, 200, 255, 0.4);
 }
 
 select {
@@ -111,6 +135,7 @@ input[type="range"] {
   box-shadow: 0 12px 34px rgba(0,0,0,0.42);
   pointer-events: auto;
   display: none;
+  animation: floatIn 420ms ease-out both;
 }
 
 .resItem {
@@ -158,6 +183,7 @@ input[type="range"] {
   backdrop-filter: blur(10px);
   box-shadow: 0 14px 40px rgba(0,0,0,0.42);
   pointer-events: auto;
+  animation: floatIn 620ms ease-out both;
 }
 
 #panel h3 {
@@ -231,6 +257,7 @@ input[type="range"] {
   flex-direction: column;
   gap: 6px;
   min-width: 240px;
+  animation: floatIn 680ms ease-out both;
 }
 
 .row {
@@ -327,6 +354,11 @@ input[type="range"] {
   background: rgba(255,255,255,0.06);
   color: rgba(230,240,255,0.80);
   font-size: 11px;
+}
+
+@keyframes floatIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 /* Mobile-ish */

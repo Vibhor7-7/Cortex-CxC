@@ -41,6 +41,7 @@ const pointSizeRange = document.getElementById("pointSize");
 const pointSizeLabel = document.getElementById("pointSizeLabel");
 const kNNRange = document.getElementById("kNN");
 const kNNLabel = document.getElementById("kNNLabel");
+const resetViewBtn = document.getElementById("resetView");
 
 const pTitle = document.getElementById("pTitle");
 const pCluster = document.getElementById("pCluster");
@@ -326,6 +327,7 @@ geom.setAttribute("position", new THREE.BufferAttribute(pos, 3));
 const aColor = new Float32Array(CFG.N * 3);
 const aAlpha = new Float32Array(CFG.N);
 const aBoost = new Float32Array(CFG.N);
+const aBoostTarget = new Float32Array(CFG.N);
 for (let i=0; i<CFG.N; i++) {
   const c = clusterId[i];
   const hue = (c / CFG.CLUSTERS);
@@ -335,6 +337,7 @@ for (let i=0; i<CFG.N; i++) {
   aColor[i*3+2] = col.b;
   aAlpha[i] = 0.95;
   aBoost[i] = 1.0;
+  aBoostTarget[i] = 1.0;
 }
 geom.setAttribute("aColor", new THREE.BufferAttribute(aColor, 3));
 geom.setAttribute("aAlpha", new THREE.BufferAttribute(aAlpha, 1));
@@ -599,11 +602,11 @@ function pickPoint() {
 
 function setHovered(i) {
   if (hovered === i) return;
-  if (hovered >= 0 && hovered !== selected) aBoost[hovered] = 1.0;
+  if (hovered >= 0 && hovered !== selected) aBoostTarget[hovered] = 1.0;
 
   hovered = i;
   if (hovered >= 0 && hovered !== selected) {
-    aBoost[hovered] = CFG.HOVER_BOOST;
+    aBoostTarget[hovered] = CFG.HOVER_BOOST;
     showHalo(hovered, false);
   } else {
     if (selected < 0) {
@@ -612,22 +615,20 @@ function setHovered(i) {
       showHalo(selected, true);
     }
   }
-  geom.attributes.aBoost.needsUpdate = true;
 }
 
 function setSelected(i) {
   if (selected === i) return;
 
-  if (selected >= 0) aBoost[selected] = 1.0;
+  if (selected >= 0) aBoostTarget[selected] = 1.0;
   selected = i;
 
   if (selected >= 0) {
-    aBoost[selected] = CFG.SELECT_BOOST;
-    geom.attributes.aBoost.needsUpdate = true;
+    aBoostTarget[selected] = CFG.SELECT_BOOST;
     showHalo(selected, true);
     populatePanel(selected);
+    focusNode(selected);
   } else {
-    geom.attributes.aBoost.needsUpdate = true;
     halo.visible = false;
     clearPanel();
   }
@@ -743,7 +744,7 @@ function focusNode(i) {
   const target = new THREE.Vector3(pos[i*3+0], pos[i*3+1], pos[i*3+2]);
 
   const camDir = camera.position.clone().sub(orbit.target).normalize();
-  const dist = 38;
+  const dist = 24;
   const newPos = target.clone().add(camDir.multiplyScalar(dist)).add(new THREE.Vector3(0, 8, 0));
 
   flyTo = {
@@ -921,6 +922,7 @@ function setK(k) {
 }
 kNNRange.addEventListener("input", () => setK(parseInt(kNNRange.value, 10)));
 setK(parseInt(kNNRange.value, 10));
+resetViewBtn.addEventListener("click", () => resetCamera());
 
 // ---------- Keyboard ----------
 const keys = new Set();
@@ -1092,6 +1094,7 @@ function updateNodes(dt, t) {
   const drift = CFG.DRIFT_STRENGTH;
   const k = CFG.SPRING_K;
   const damp = CFG.DAMPING;
+  const boostEase = 1.0 - Math.exp(-dt * 10.0);
 
   const cf = parseInt(clusterSel.value, 10);
   for (let i=0; i<CFG.N; i++) {
@@ -1116,6 +1119,8 @@ function updateNodes(dt, t) {
     vv.addScaledVector(tmp, dt);
     pp.addScaledVector(vv, dt);
 
+    aBoost[i] += (aBoostTarget[i] - aBoost[i]) * boostEase;
+
     pos[i*3+0] = pp.x;
     pos[i*3+1] = pp.y;
     pos[i*3+2] = pp.z;
@@ -1126,6 +1131,7 @@ function updateNodes(dt, t) {
 
   geom.attributes.position.needsUpdate = true;
   geom.attributes.aAlpha.needsUpdate = true;
+  geom.attributes.aBoost.needsUpdate = true;
 
   if (halo.visible) {
     const i = (selected >= 0) ? selected : hovered;
@@ -1172,6 +1178,10 @@ function animate() {
 
   updateFlyTo(dt);
   updateNodes(dt, t);
+  if (halo.visible) {
+    const base = (selected >= 0) ? 26.0 : 20.0;
+    haloMat.uniforms.uPointSize.value = base * (1.0 + 0.08 * Math.sin(t * 4.2));
+  }
 
   renderer.render(scene, camera);
 }
