@@ -296,6 +296,29 @@ export async function uploadChatFile(file, autoReprocess = false) {
 }
 
 /**
+ * Generate an LLM-powered system prompt from selected conversations.
+ *
+ * The backend gathers conversation summaries, sends them to Qwen 2.5,
+ * and returns a polished system prompt the user can paste into a new
+ * ChatGPT session.
+ *
+ * @param {string[]} conversationIds – UUIDs of the selected conversations
+ * @returns {Promise<{
+ *   prompt: string,
+ *   conversations_used: number,
+ *   processing_time_ms: number
+ * }>}
+ * @throws {ApiError}
+ */
+export async function generatePrompt(conversationIds) {
+  return request("/api/prompt/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ conversation_ids: conversationIds }),
+  });
+}
+
+/**
  * Quick health check — useful for connectivity indicator.
  *
  * @returns {Promise<{

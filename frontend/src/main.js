@@ -139,7 +139,9 @@ let apiLoading = false;
 
 function setApiLoading(on) {
   apiLoading = on;
-  searchEl.disabled = on;
+  // Don't disable the search input — let the user keep editing while
+  // a search is in flight.  The debounce timer will re-trigger if they
+  // change the query, and the loading spinner gives visual feedback.
 }
 
 // ---------- Renderer / Scene ----------
@@ -1128,10 +1130,36 @@ function buildContextPack(ids) {
   return `Relevant past context:\n${bullets}\n\nInstructions:\n- Use the context pack to continue the thread.\n- Avoid repeating raw chat logs; summarize and reference insights.`;
 }
 
-function openPromptModal() {
+async function openPromptModal() {
   const ids = Array.from(selectedSet).slice(0, 5);
-  promptText.value = buildContextPack(ids);
+  // Collect backend conversation IDs
+  const conversationIds = ids.map(i => nodes[i]?.backendId).filter(Boolean);
+  if (conversationIds.length === 0) {
+    showToast("No valid conversations selected", "error", 3000);
+    return;
+  }
+
+  // Show modal immediately with loading state
+  promptText.value = "Generating system prompt…";
   promptModal.style.display = "block";
+  copyPromptBtn.disabled = true;
+
+  try {
+    const { generatePrompt } = await import("./api.js");
+    const result = await generatePrompt(conversationIds);
+    promptText.value = result.prompt;
+    showToast(
+      `Prompt generated from ${result.conversations_used} chats (${(result.processing_time_ms / 1000).toFixed(1)}s)`,
+      "success",
+      3000
+    );
+  } catch (err) {
+    console.error("[prompt]", err);
+    promptText.value = `Error generating prompt: ${err.message}\n\nFallback context pack:\n\n${buildContextPack(ids)}`;
+    showToast("Prompt generation failed — showing fallback", "error", 4000);
+  } finally {
+    copyPromptBtn.disabled = false;
+  }
 }
 
 function closePromptModal() {

@@ -202,6 +202,27 @@ class IngestBatchResponse(BaseModel):
 
 
 # ============================================================================
+# Prompt Generation Schemas
+# ============================================================================
+
+class GeneratePromptRequest(BaseModel):
+    """Schema for system-prompt generation request."""
+    conversation_ids: List[str] = Field(
+        ...,
+        min_length=1,
+        max_length=10,
+        description="IDs of selected conversations to build a system prompt from"
+    )
+
+
+class GeneratePromptResponse(BaseModel):
+    """Schema for system-prompt generation response."""
+    prompt: str = Field(..., description="LLM-generated system prompt")
+    conversations_used: int = Field(..., description="Number of conversations included")
+    processing_time_ms: float = Field(..., description="LLM processing time in ms")
+
+
+# ============================================================================
 # Visualization Data Schemas
 # ============================================================================
 
