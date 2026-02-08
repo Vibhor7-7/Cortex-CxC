@@ -20,7 +20,7 @@ CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interac
   -  Phase 3: Hybrid Search System (100%) - 24/24 tests passing
   -  Phase 4: Frontend Integration (25%) - Task 4.1 complete
   -  Phase 5: MCP Integration (50%) - Tasks 5.1 & 5.2 complete
-- **MCP Layer:** 50% complete - Server + search_memory tool implemented, fetch_chat + testing pending
+- **MCP Layer:** 75% complete - Server + search_memory + fetch_chat + Backboard.io guard implemented, testing pending
 - **Overall Completion:** ~88% (Phase 1-3 complete, Phase 4.1 complete, Phase 5.1-5.2 complete)
 
 **Test Summary (70/70 passing — fully local stack, no API keys required):**
@@ -89,6 +89,7 @@ CORTEX transforms AI chat history (ChatGPT/Claude conversations) into an interac
 - **Dimension Reduction:** UMAP
 - **Clustering:** K-means
 - **MCP:** Anthropic MCP SDK (Python)
+- **Retrieval Quality:** Backboard.io (relevance scoring, redundancy checking, MCP guard filtering)
 
 **Frontend Architecture Details:**
 - Single-page web app - everything runs in the browser
@@ -970,32 +971,78 @@ The foundation is solid and ready for:
 
 ---
 
-### Task 5.4: MCP Integration Testing
+### Task 5.4: Backboard.io Retrieval Guard Integration ✅ COMPLETE
+**Priority:** P1 (High)  
+**Estimated Time:** 2 hours  
+**Owner:** MCP Team  
+**Status:** ✅ **COMPLETE**
+
+#### Sub-tasks:
+- [x] **5.4.1** Implement `backend/services/backboard_evaluator.py`:
+  - BackboardEvaluator class for retrieval quality assessment
+  - Evaluation prompts for relevance scoring (0.0-1.0)
+  - Redundancy checking between search results
+  - Coverage evaluation for query satisfaction
+  - JSON output parsing with fallback handling
+
+- [x] **5.4.2** Implement `backend/services/backboard_guard.py`:
+  - RelevanceGuard class for MCP tool filtering
+  - Configurable relevance threshold (default: 0.5)
+  - Filters search results before returning to LLM
+  - Async evaluation with Backboard.io API
+  - Graceful degradation when API unavailable
+
+- [x] **5.4.3** Create `backend/cortex_mcp/config.py` BackboardConfig:
+  - `BACKBOARD_API_KEY` environment variable support
+  - `BACKBOARD_RELEVANCE_THRESHOLD` configuration (0.0-1.0)
+  - Guard enabled/disabled based on API key presence
+
+- [x] **5.4.4** Integrate guard into MCP search_memory tool:
+  - Filter results through RelevanceGuard before formatting
+  - Return only results meeting relevance threshold
+  - Include relevance scores in formatted output
+
+**Acceptance Criteria:**
+- ✅ Backboard.io evaluates search result relevance
+- ✅ Low-relevance results are filtered from MCP responses
+- ✅ Guard is optional (works without API key)
+- ✅ Configurable threshold for different use cases
+
+**Implementation Details:**
+- [backend/services/backboard_evaluator.py](backend/services/backboard_evaluator.py) - 436 lines
+- [backend/services/backboard_guard.py](backend/services/backboard_guard.py) - 295 lines
+- Requires `BACKBOARD_API_KEY` env var to enable
+- Default threshold: 0.5 (adjustable via `BACKBOARD_RELEVANCE_THRESHOLD`)
+
+---
+
+### Task 5.5: MCP Integration Testing
 **Priority:** P1 (High)  
 **Estimated Time:** 3 hours  
 **Owner:** MCP Team
 
 #### Sub-tasks:
-- [ ] **5.4.1** Create MCP test client:
+- [ ] **5.5.1** Create MCP test client:
   - Simple Python script to test MCP tools
   - Simulate Claude Desktop communication
 
-- [ ] **5.4.2** Test search_memory tool:
+- [ ] **5.5.2** Test search_memory tool:
   - Test various queries
   - Verify result formatting
   - Test error cases (no results, backend down)
+  - Test Backboard.io guard filtering
 
-- [ ] **5.4.3** Test fetch_chat tool:
+- [ ] **5.5.3** Test fetch_chat tool:
   - Test with valid conversation IDs
   - Test with invalid IDs
   - Verify complete message history
 
-- [ ] **5.4.4** Create Claude Desktop configuration:
+- [ ] **5.5.4** Create Claude Desktop configuration:
   - Generate `claude_desktop_config.json`
   - Configure MCP server connection
   - Test integration with actual Claude Desktop app
 
-- [ ] **5.4.5** Document MCP setup:
+- [ ] **5.5.5** Document MCP setup:
   - Add README section on MCP server setup
   - Include example tool invocations
   - Add troubleshooting guide
@@ -1449,6 +1496,15 @@ The frontend currently generates fake data but expects this structure from `GET 
 - Hackathon-friendly: easier to debug, fewer dependencies
 - Can migrate to React later if multi-page app or SSR is needed
 
+**Why Backboard.io for retrieval quality?**
+- Provides relevance scoring (0.0-1.0) for search results
+- Filters out low-quality results before returning to LLM via MCP
+- Reduces hallucination risk by ensuring only relevant context is injected
+- Redundancy checking prevents duplicate information in results
+- Coverage evaluation ensures query is adequately answered
+- Optional integration — works without API key (guard disabled)
+- Configurable threshold allows tuning precision vs recall tradeoff
+
 ### 9.3 Reference Architecture Diagram
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -1488,6 +1544,7 @@ The frontend currently generates fake data but expects this structure from `GET 
 │  │  • Vector Store Indexing (OpenAI)           │              │
 │  │  • Vector Store Search (OpenAI)             │              │
 │  │  • Result Aggregation + Filters             │              │
+│  │  • Backboard.io Relevance Guard             │              │
 │  └──────┬──────────────────────────────┬───────┘              │
 │         │                              │                       │
 │  ┌──────▼──────────┐          ┌──────────────────────┐       │
@@ -1500,13 +1557,18 @@ The frontend currently generates fake data but expects this structure from `GET 
 └───────────────────────────────┬─────────────────────────────┘
                                 │
 ┌───────────────────────────────┼─────────────────────────────┐
-│              MCP Server (stdio)                               │
+│              MCP Server (stdio + HTTP/SSE)                    │
 │  ┌──────────────────┐  ┌──────────────────┐                 │
 │  │ search_memory    │  │  fetch_chat      │                 │
 │  │ tool             │  │  tool            │                 │
 │  └────────┬─────────┘  └─────────┬────────┘                 │
 │           └────────────┬──────────┘                          │
 │                        ▼                                      │
+│    ┌─────────────────────────────────┐                       │
+│    │  Backboard.io Relevance Guard   │                       │
+│    │  (filters low-relevance results)│                       │
+│    └─────────────────────────────────┘                       │
+│                        │                                      │
 │              Calls Backend API                                │
 └───────────────────────────────────────────────────────────────┘
                         ▲
