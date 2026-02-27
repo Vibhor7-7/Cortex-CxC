@@ -49,24 +49,6 @@ Browser (Three.js)  ──REST──▶  FastAPI Backend  ──▶  SQLite + Nu
 
 ---
 
-## Key Features
-
-🧠 **Multi-format parsing** — Handles ChatGPT and Claude HTML exports out of the box
-
-🗺️ **3D visualization** — UMAP-projected conversation clusters with orbit and fly-through controls
-
-🔍 **Hybrid search** — Semantic + keyword retrieval across your full conversation history
-
-🔌 **MCP tools** — `search_memory` and `fetch_chat` let Claude pull context from your past conversations
-
-📤 **Drag-and-drop upload** — Batch ingest with per-file progress tracking
-
-🛡️ **Relevance guard** — Backboard.io filters low-quality results before injecting context into models
-
-⚡ **Fully local** — No cloud dependencies, no API costs, everything runs on your machine
-
----
-
 ## Design Decisions
 
 | Decision | Why |
