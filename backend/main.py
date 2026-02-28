@@ -24,6 +24,7 @@ load_dotenv()
 # Import database and models
 from backend.database import init_db, engine
 from backend.schemas import HealthResponse
+from backend.services.provider import get_embedding_provider, get_chat_provider
 
 # Import routers
 from backend.api.ingest import router as ingest_router
@@ -40,27 +41,47 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     print("Starting CORTEX backend")
-    
+
     # Initialize database
     try:
         init_db()
         print("Database initialized successfully")
     except Exception as e:
         print(f"Database initialization error: {e}")
-    
-    # Verify Ollama is reachable
-    try:
-        import httpx
-        resp = httpx.get(os.getenv("OLLAMA_BASE_URL", "http://localhost:11434") + "/api/tags", timeout=3)
-        model_names = [m["name"] for m in resp.json().get("models", [])]
-        print(f"[OK] Ollama connected - models: {', '.join(model_names)}")
-    except Exception:
-        print("[WARNING] Ollama not reachable at localhost:11434 (summarization & embeddings will fail)")
-    
+
+    # Log active providers
+    emb_provider = get_embedding_provider()
+    chat_provider = get_chat_provider()
+    print(f"[CONFIG] Embedding provider: {emb_provider}")
+    print(f"[CONFIG] Chat provider: {chat_provider}")
+
+    # Validate API keys for cloud providers
+    if emb_provider == "huggingface":
+        if os.getenv("HF_API_TOKEN"):
+            print("[OK] HuggingFace API token is set")
+        else:
+            print("[WARNING] EMBEDDING_PROVIDER=huggingface but HF_API_TOKEN is not set!")
+
+    if chat_provider == "groq":
+        if os.getenv("GROQ_API_KEY"):
+            print("[OK] Groq API key is set")
+        else:
+            print("[WARNING] CHAT_PROVIDER=groq but GROQ_API_KEY is not set!")
+
+    # Check Ollama if either provider uses it
+    if emb_provider == "ollama" or chat_provider == "ollama":
+        try:
+            import httpx
+            resp = httpx.get(os.getenv("OLLAMA_BASE_URL", "http://localhost:11434") + "/api/tags", timeout=3)
+            model_names = [m["name"] for m in resp.json().get("models", [])]
+            print(f"[OK] Ollama connected - models: {', '.join(model_names)}")
+        except Exception:
+            print("[WARNING] Ollama not reachable at localhost:11434 (local provider will fail)")
+
     print("CORTEX backend ready!")
-    
+
     yield
-    
+
     # Shutdown
     print("Shutting down CORTEX backend")
     engine.dispose()
@@ -111,9 +132,11 @@ async def internal_error_handler(request, exc):
 async def health_check():
     """
     Health check endpoint.
-    
     Returns system status and configuration info.
     """
+    emb_provider = get_embedding_provider()
+    chat_prov = get_chat_provider()
+
     # Check database connection
     database_connected = False
     try:
@@ -121,15 +144,38 @@ async def health_check():
             database_connected = True
     except Exception:
         pass
-    
-    # Check Ollama connectivity
+
+    # Check embedding provider readiness
+    embedding_ready = False
     ollama_connected = False
-    try:
-        import httpx
-        resp = httpx.get(os.getenv("OLLAMA_BASE_URL", "http://localhost:11434") + "/api/tags", timeout=2)
-        ollama_connected = resp.status_code == 200
-    except Exception:
-        pass
+    if emb_provider == "huggingface":
+        embedding_ready = bool(os.getenv("HF_API_TOKEN"))
+    else:
+        # Ollama — check connectivity
+        try:
+            import httpx
+            resp = httpx.get(os.getenv("OLLAMA_BASE_URL", "http://localhost:11434") + "/api/tags", timeout=2)
+            ollama_connected = resp.status_code == 200
+            embedding_ready = ollama_connected
+        except Exception:
+            pass
+
+    # Check chat provider readiness
+    chat_ready = False
+    if chat_prov == "groq":
+        chat_ready = bool(os.getenv("GROQ_API_KEY"))
+    else:
+        # Ollama — reuse check or do fresh
+        if ollama_connected:
+            chat_ready = True
+        else:
+            try:
+                import httpx
+                resp = httpx.get(os.getenv("OLLAMA_BASE_URL", "http://localhost:11434") + "/api/tags", timeout=2)
+                ollama_connected = resp.status_code == 200
+                chat_ready = ollama_connected
+            except Exception:
+                pass
 
     # Check vector store
     vector_store_ready = False
@@ -139,13 +185,19 @@ async def health_check():
         vector_store_ready = svc.count() >= 0
     except Exception:
         pass
-    
+
+    is_healthy = database_connected and embedding_ready and chat_ready
+
     return HealthResponse(
-        status="healthy" if database_connected else "degraded",
+        status="healthy" if is_healthy else "degraded",
         version="1.0.0",
         database_connected=database_connected,
         ollama_connected=ollama_connected,
         chroma_ready=vector_store_ready,
+        embedding_provider=emb_provider,
+        chat_provider=chat_prov,
+        embedding_ready=embedding_ready,
+        chat_ready=chat_ready,
     )
 
 
@@ -170,10 +222,10 @@ app.include_router(prompt_router)
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", 8000))
-    
+
     uvicorn.run(
         "backend.main:app",
         host=host,

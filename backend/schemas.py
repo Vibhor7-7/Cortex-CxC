@@ -266,6 +266,10 @@ class HealthResponse(BaseModel):
     status: str
     version: str = "1.0.0"
     database_connected: bool
-    ollama_connected: bool
+    ollama_connected: bool  # backward compat
     chroma_ready: bool
+    embedding_provider: str = "ollama"
+    chat_provider: str = "ollama"
+    embedding_ready: bool = False
+    chat_ready: bool = False
     

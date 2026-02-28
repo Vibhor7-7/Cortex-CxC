@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip:*)",
+      "Bash(ollama list:*)",
+      "Bash(python:*)",
+      "Bash(taskkill:*)",
+      "Bash(netstat:*)",
+      "Bash(curl:*)",
+      "Bash(nvidia-smi:*)",
+      "Bash(ollama pull:*)",
+      "WebSearch",
+      "WebFetch(domain:coolify.io)",
+      "WebFetch(domain:gist.github.com)",
+      "Bash(where docker:*)",
+      "Bash(du:*)",
+      "Bash(HF_API_TOKEN=test GROQ_API_KEY=test python:*)"
+    ]
+  }
+}

@@ -22,8 +22,8 @@ UMAP_N_NEIGHBORS = int(os.getenv("UMAP_N_NEIGHBORS", "15"))
 UMAP_MIN_DIST = float(os.getenv("UMAP_MIN_DIST", "0.1"))
 UMAP_RANDOM_STATE = 42  # For reproducibility
 
-# Model storage directory
-MODEL_DIR = Path(__file__).parent.parent.parent / ".models"
+# Model storage directory (configurable via env for Docker)
+MODEL_DIR = Path(os.getenv("MODEL_DIR", str(Path(__file__).parent.parent.parent / ".models")))
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
 MODEL_PATH = MODEL_DIR / "umap_model.pkl"
 

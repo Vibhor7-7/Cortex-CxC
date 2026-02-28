@@ -99,132 +99,141 @@ async def ingest_single_chat(
         total_messages = 0
         ingested = 0
 
-        for conv_idx, parsed_data in enumerate(parsed_conversations):
+        # Process conversations concurrently in batches
+        BATCH_SIZE = 3  # Number of concurrent conversations to process
+
+        async def _process_single_conversation(conv_idx: int, parsed_data: dict):
+            """Process a single conversation: normalize, summarize, embed, store."""
+            messages = parsed_data.get('messages', [])
+            if not messages:
+                print(f"  [skip] conversation #{conv_idx}: no messages")
+                return None
+
+            # Normalize conversation
+            normalized = normalize_conversation(
+                parsed_data,
+                messages
+            )
+
+            # Generate summary and topics using LLM
             try:
-                messages = parsed_data.get('messages', [])
-                if not messages:
-                    print(f"  [skip] conversation #{conv_idx}: no messages")
-                    continue
+                summary, topics = await summarize_conversation(normalized['messages'])
+            except Exception as e:
+                print(f"Warning: Summarization failed: {e}")
+                summary = f"Conversation with {normalized['message_count']} messages"
+                topics = []
 
-                # Normalize conversation
-                normalized = normalize_conversation(
-                    parsed_data,
-                    messages
+            # Create conversation ID
+            conversation_id = str(uuid.uuid4())
+
+            # Prepare text for embedding
+            embedding_text = prepare_text_for_embedding(
+                title=normalized['title'],
+                summary=summary,
+                topics=topics,
+                messages=normalized['messages']
+            )
+
+            # Generate embedding
+            try:
+                embedding_vector = await generate_embedding(
+                    embedding_text,
+                    conversation_id=conversation_id
                 )
+            except Exception as e:
+                print(f"  [error] Embedding failed for conv #{conv_idx} ({normalized['title']}): {e}")
+                return None
 
-                # Generate summary and topics using LLM
-                try:
-                    summary, topics = await summarize_conversation(normalized['messages'])
-                except Exception as e:
-                    # If summarization fails, use fallback
-                    print(f"Warning: Summarization failed: {e}")
-                    summary = f"Conversation with {normalized['message_count']} messages"
-                    topics = []
+            vector_3d = [0.0, 0.0, 0.0]
 
-                # Create conversation ID
-                conversation_id = str(uuid.uuid4())
-
-                # Prepare text for embedding
-                embedding_text = prepare_text_for_embedding(
+            # Save to database
+            with get_db_context() as db:
+                conversation = Conversation(
+                    id=conversation_id,
                     title=normalized['title'],
                     summary=summary,
                     topics=topics,
-                    messages=normalized['messages']
+                    cluster_id=0,
+                    cluster_name="Unclustered",
+                    message_count=normalized['message_count'],
+                    created_at=normalized['created_at']
                 )
+                db.add(conversation)
 
-                # Generate embedding
-                try:
-                    embedding_vector = await generate_embedding(
-                        embedding_text,
-                        conversation_id=conversation_id
-                    )
-                except Exception as e:
-                    print(f"  [error] Embedding failed for conv #{conv_idx} ({normalized['title']}): {e}")
-                    continue
-
-                # For now, store with placeholder 3D coordinates
-                # In a full implementation, we would re-run UMAP on all conversations
-                vector_3d = [0.0, 0.0, 0.0]
-
-                # Save to database
-                with get_db_context() as db:
-                    # Create conversation
-                    conversation = Conversation(
-                        id=conversation_id,
-                        title=normalized['title'],
-                        summary=summary,
-                        topics=topics,
-                        cluster_id=0,
-                        cluster_name="Unclustered",
-                        message_count=normalized['message_count'],
-                        created_at=normalized['created_at']
-                    )
-                    db.add(conversation)
-
-                    # Create messages
-                    for msg in normalized['messages']:
-                        message = Message(
-                            id=str(uuid.uuid4()),
-                            conversation_id=conversation_id,
-                            role=MessageRole(msg['role']),
-                            content=msg['content'],
-                            sequence_number=msg['sequence_number']
-                        )
-                        db.add(message)
-
-                    # Create embedding
-                    embedding = Embedding(
+                for msg in normalized['messages']:
+                    message = Message(
+                        id=str(uuid.uuid4()),
                         conversation_id=conversation_id,
-                        embedding_384d=embedding_vector,
-                        vector_3d=vector_3d,
-                        start_x=0.0,
-                        start_y=0.0,
-                        start_z=0.0,
-                        end_x=vector_3d[0],
-                        end_y=vector_3d[1],
-                        end_z=vector_3d[2],
-                        magnitude=1.0
+                        role=MessageRole(msg['role']),
+                        content=msg['content'],
+                        sequence_number=msg['sequence_number']
                     )
-                    db.add(embedding)
+                    db.add(message)
 
-                    db.commit()
-
-                # Upsert conversation into local vector store
-                try:
-                    print(f"Upserting conversation {conversation_id} into vector store")
-                    conversation_data = {
-                        'title': normalized['title'],
-                        'summary': summary,
-                        'topics': topics,
-                        'messages': normalized['messages']
-                    }
-                    await upsert_conversation_to_store(
-                        conversation_id=conversation_id,
-                        conversation_data=conversation_data,
-                        embedding=embedding_vector,
-                    )
-                    print(f"[OK] Conversation indexed in vector store: {conversation_id}")
-                except Exception as e:
-                    # Don't fail ingestion if vector store upsert fails
-                    print(f"Warning: Vector store upsert failed: {e}")
-
-                results.append(
-                    IngestResponse(
-                        success=True,
-                        conversation_id=conversation_id,
-                        title=normalized['title'],
-                        message_count=normalized['message_count'],
-                        error=None,
-                        processing_time_ms=0
-                    )
+                embedding = Embedding(
+                    conversation_id=conversation_id,
+                    embedding_384d=embedding_vector,
+                    vector_3d=vector_3d,
+                    start_x=0.0,
+                    start_y=0.0,
+                    start_z=0.0,
+                    end_x=vector_3d[0],
+                    end_y=vector_3d[1],
+                    end_z=vector_3d[2],
+                    magnitude=1.0
                 )
-                ingested += 1
-                total_messages += normalized['message_count']
-                last_id = conversation_id
-                last_title = normalized['title']
+                db.add(embedding)
+                db.commit()
+
+            # Upsert into vector store
+            try:
+                print(f"Upserting conversation {conversation_id} into vector store")
+                conversation_data = {
+                    'title': normalized['title'],
+                    'summary': summary,
+                    'topics': topics,
+                    'messages': normalized['messages']
+                }
+                await upsert_conversation_to_store(
+                    conversation_id=conversation_id,
+                    conversation_data=conversation_data,
+                    embedding=embedding_vector,
+                )
+                print(f"[OK] Conversation indexed in vector store: {conversation_id}")
             except Exception as e:
-                print(f"Warning: Failed to ingest one conversation: {e}")
-                continue
+                print(f"Warning: Vector store upsert failed: {e}")
+
+            return IngestResponse(
+                success=True,
+                conversation_id=conversation_id,
+                title=normalized['title'],
+                message_count=normalized['message_count'],
+                error=None,
+                processing_time_ms=0
+            )
+
+        # Process in concurrent batches
+        for batch_start in range(0, len(parsed_conversations), BATCH_SIZE):
+            batch = parsed_conversations[batch_start:batch_start + BATCH_SIZE]
+            batch_indices = range(batch_start, batch_start + len(batch))
+
+            print(f"[ingest] Processing batch {batch_start // BATCH_SIZE + 1} ({len(batch)} conversations concurrently)...")
+
+            tasks = [
+                _process_single_conversation(idx, data)
+                for idx, data in zip(batch_indices, batch)
+            ]
+            batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            for result in batch_results:
+                if isinstance(result, Exception):
+                    print(f"Warning: Failed to ingest one conversation: {result}")
+                elif result is not None:
+                    results.append(result)
+                    ingested += 1
+                    total_messages += result.message_count
+                    last_id = result.conversation_id
+                    last_title = result.title
 
         if ingested == 0:
             raise HTTPException(status_code=422, detail="All conversations in the file were empty or failed processing")

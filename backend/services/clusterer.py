@@ -49,7 +49,7 @@ DEFAULT_CLUSTER_NAMES = [
 ]
 
 # Model storage directory
-MODEL_DIR = Path(__file__).parent.parent.parent / ".models"
+MODEL_DIR = Path(os.getenv("MODEL_DIR", str(Path(__file__).parent.parent.parent / ".models")))
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
 CLUSTER_MODEL_PATH = MODEL_DIR / "kmeans_model.pkl"
 

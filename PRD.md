@@ -1,9 +1,9 @@
 # Product Requirements Document: CORTEX
 ## AI Chat Memory Visualization & Retrieval System
 
-**Version:** 1.0  
-**Date:** February 6, 2026  
-**Status:** Implementation Phase
+**Version:** 2.0
+**Date:** February 27, 2026
+**Status:** Market-Ready Development Phase (Open-Core, Local-First)
 
 ---
 
@@ -1351,27 +1351,456 @@ All → Backend must be completed first
 
 ---
 
-## 8. Out of Scope (For Hackathon)
+## 8. Post-Hackathon: Open-Core Local-First Roadmap
 
-### Explicitly NOT Included:
--  User authentication/accounts
--  Multi-user support
--  Real-time collaboration
--  Production deployment (AWS/GCP/Azure)
--  Conversation editing/deletion UI
--  Export conversations back to HTML
--  Mobile app
--  Browser extension for auto-export
--  Integration with live ChatGPT/Claude APIs for auto-import
--  Advanced analytics/dashboards
--  Fine-tuned embedding models
+> **Strategy:** Open-core, fully local, privacy-first. No cloud dependency. Everything runs on the user's machine. Zero API keys required. Ship as a desktop application with one-click install.
 
-### Future Roadmap (Post-Hackathon):
-1. **Phase 1:** User accounts + cloud deployment
-2. **Phase 2:** Browser extension for auto-export
-3. **Phase 3:** Advanced analytics + conversation insights
-4. **Phase 4:** Fine-tuned embeddings for domain-specific memory
-5. **Phase 5:** Multi-modal support (images, code, files in chats)
+### 8.1 Remaining Hackathon Gaps (Complete First)
+
+These items from Phases 4-7 must be finished before moving forward:
+
+| Item | Status | Priority |
+|------|--------|----------|
+| Task 4.2: Replace fake data with backend data | Not started | **P0** |
+| Task 4.4: UI Polish & Enhancements | Not started | P1 |
+| Task 5.5: MCP Integration Testing | Not started | P1 |
+| Task 6.1-6.2: Backend + E2E Testing | Partial | P1 |
+| Task 7.1: Documentation | Not started | P2 |
+
+---
+
+## PHASE 8: Frontend-Backend Full Integration
+
+> **Goal:** Make the frontend fully dynamic — no more sample/fake data. Everything comes from the backend.
+
+### Task 8.1: Live Visualization Data
+
+**Description:** Replace all client-side generated sample data in `main.js` with real backend data from `/api/chats/visualization`.
+
+**Subtasks:**
+1. On page load, fetch all conversations from `GET /api/chats/visualization`
+2. Map backend response fields (`end_x`, `end_y`, `end_z`, `cluster_id`, `cluster_name`, `title`, `summary`) to Three.js point cloud nodes
+3. Handle empty state gracefully (no conversations yet → show upload prompt)
+4. Add loading spinner/skeleton while fetching
+5. Auto-refresh visualization after successful file upload
+
+**Acceptance Criteria:**
+- [ ] 3D visualization renders real conversations from the database
+- [ ] Cluster colors match backend-assigned `cluster_id`
+- [ ] Clicking a node shows real conversation title, summary, topics
+- [ ] Empty state shows clear "Upload your first conversation" CTA
+
+**Files to modify:** `frontend/src/main.js`, `frontend/src/api.js`, `frontend/index.html`
+
+### Task 8.2: Live Search Integration
+
+**Description:** Wire the search bar to `POST /api/search` and display real results.
+
+**Subtasks:**
+1. On search submit, call `POST /api/search` with query text
+2. Render search results in the results panel with score, title, summary
+3. Highlight matching nodes in the 3D view (camera focus on results)
+4. Support cluster filtering via dropdown populated from backend data
+5. Handle no-results state
+
+**Acceptance Criteria:**
+- [ ] Search returns real semantic matches from the vector store
+- [ ] Results panel shows score, title, summary for each match
+- [ ] Clicking a result focuses the camera on that node in 3D space
+- [ ] Cluster filter dropdown populated dynamically
+
+**Files to modify:** `frontend/src/main.js`, `frontend/src/api.js`
+
+### Task 8.3: Conversation Detail Panel
+
+**Description:** When a user clicks a node, fetch and display the full conversation from `GET /api/chats/{id}`.
+
+**Subtasks:**
+1. On node click, fetch full conversation from backend
+2. Render message history (user/assistant turns) in detail panel
+3. Show metadata: title, summary, topics, cluster, message count, date
+4. Show k-NN neighbors from the visualization data
+5. Add "Generate System Prompt" button that calls `POST /api/prompt/generate`
+
+**Acceptance Criteria:**
+- [ ] Full message history renders on node click
+- [ ] User and assistant messages are visually distinct
+- [ ] System prompt generation works end-to-end
+- [ ] Neighbors list shows clickable related conversations
+
+**Files to modify:** `frontend/src/main.js`, `frontend/src/api.js`, `frontend/index.html`, `frontend/styles.css`
+
+### Task 8.4: File Upload Flow (End-to-End)
+
+**Description:** Ensure drag-drop and file picker upload works with real backend ingestion, and visualization updates after upload.
+
+**Subtasks:**
+1. Upload file via `POST /api/ingest/` with proper multipart form
+2. Show upload progress indicator
+3. On success, trigger re-fetch of visualization data
+4. Handle errors (invalid format, parse failures) with user-friendly messages
+5. Support batch upload of multiple files
+
+**Acceptance Criteria:**
+- [ ] Drag-drop HTML file → parsed → appears in 3D view within seconds
+- [ ] Error messages shown for invalid/unsupported files
+- [ ] Batch upload works for multiple files
+- [ ] Progress indicator during processing
+
+**Files to modify:** `frontend/src/main.js`, `frontend/src/api.js`
+
+---
+
+## PHASE 9: Docker & One-Click Setup
+
+> **Goal:** Any user should be able to run Cortex with a single command. No manual Python/Ollama setup.
+
+### Task 9.1: Dockerize the Application
+
+**Description:** Create Docker Compose setup that bundles backend, frontend (static file serving), and Ollama together.
+
+**Subtasks:**
+1. Create `Dockerfile` for the FastAPI backend
+2. Create `docker-compose.yml` with services:
+   - `backend` — FastAPI app on port 8000
+   - `ollama` — Ollama server with models pre-pulled
+   - `frontend` — Nginx serving static files on port 3000, proxying `/api` to backend
+3. Create `scripts/start.sh` that does health checks and waits for Ollama readiness
+4. Add volume mounts for persistent data (`cortex.db`, `.vector_store.json`, `.models/`)
+5. Create `.dockerignore` for clean builds
+
+**Acceptance Criteria:**
+- [ ] `docker compose up` starts the full stack
+- [ ] Frontend accessible at `http://localhost:3000`
+- [ ] Backend API accessible at `http://localhost:8000`
+- [ ] Data persists between container restarts
+- [ ] First-time startup auto-pulls Ollama models
+
+**New files:** `Dockerfile`, `docker-compose.yml`, `nginx.conf`, `scripts/start.sh`, `.dockerignore`
+
+### Task 9.2: Cross-Platform Startup Scripts
+
+**Description:** For users who don't want Docker, provide platform-specific startup scripts.
+
+**Subtasks:**
+1. `scripts/setup.sh` (Linux/macOS) — checks Python, installs deps, pulls Ollama models, creates .env
+2. `scripts/setup.bat` (Windows) — same for Windows
+3. `scripts/run.sh` / `scripts/run.bat` — starts Ollama + backend + opens browser
+4. Add prerequisite checker (Python version, Ollama installed, port availability)
+
+**Acceptance Criteria:**
+- [ ] `./scripts/setup.sh && ./scripts/run.sh` works on fresh macOS/Linux
+- [ ] `scripts\setup.bat && scripts\run.bat` works on fresh Windows
+- [ ] Clear error messages if prerequisites missing
+
+**New files:** `scripts/setup.sh`, `scripts/setup.bat`, `scripts/run.sh`, `scripts/run.bat`
+
+---
+
+## PHASE 10: Browser Extension (Chrome/Firefox)
+
+> **Goal:** Eliminate manual HTML export. Auto-capture conversations from ChatGPT and Claude web UIs.
+
+### Task 10.1: Extension Architecture & Manifest
+
+**Description:** Create a browser extension (Manifest V3) that detects ChatGPT/Claude pages and captures conversation data.
+
+**Subtasks:**
+1. Create extension scaffold: `manifest.json`, popup, content scripts, background service worker
+2. Define permissions: `activeTab`, host permissions for `chat.openai.com`, `claude.ai`
+3. Create popup UI with:
+   - Connection status to local Cortex backend
+   - "Capture This Conversation" button
+   - "Auto-Capture" toggle
+   - Capture history log
+4. Store Cortex backend URL in extension settings (default: `http://localhost:8000`)
+
+**New files:** `extension/manifest.json`, `extension/popup.html`, `extension/popup.js`, `extension/background.js`, `extension/styles.css`
+
+### Task 10.2: ChatGPT Content Script
+
+**Description:** Content script that extracts conversation data from the ChatGPT web UI DOM.
+
+**Subtasks:**
+1. Detect ChatGPT conversation page (`chat.openai.com/c/*`)
+2. Extract conversation title from DOM
+3. Extract all message pairs (user/assistant) from the conversation thread
+4. Handle code blocks, images, and special formatting
+5. Package as normalized JSON matching the backend's expected format
+6. Send to Cortex backend via `POST /api/ingest/json` (new endpoint — raw JSON instead of HTML)
+
+**Acceptance Criteria:**
+- [ ] Captures complete conversation with all messages
+- [ ] Handles code blocks and markdown correctly
+- [ ] Works on both ChatGPT Plus and free tier pages
+- [ ] Sends data to local Cortex backend
+
+**New files:** `extension/content/chatgpt.js`
+
+### Task 10.3: Claude Content Script
+
+**Description:** Same as 10.2 but for Claude's web UI.
+
+**Subtasks:**
+1. Detect Claude conversation page (`claude.ai/chat/*`)
+2. Extract conversation title and messages from DOM
+3. Handle Claude-specific formatting (artifacts, thinking blocks)
+4. Package and send to backend
+
+**New files:** `extension/content/claude.js`
+
+### Task 10.4: Backend JSON Ingestion Endpoint
+
+**Description:** Add a new API endpoint that accepts raw JSON conversation data (from the extension) instead of HTML files.
+
+**Subtasks:**
+1. Create `POST /api/ingest/json` endpoint
+2. Accept JSON body with `{ title, source, messages: [{ role, content }] }`
+3. Reuse existing normalization → summarization → embedding pipeline
+4. Add deduplication check (don't re-ingest same conversation)
+5. Return ingestion result with conversation ID
+
+**Acceptance Criteria:**
+- [ ] Accepts JSON conversation data
+- [ ] Deduplicates by title + first message hash
+- [ ] Returns conversation ID on success
+- [ ] Works with both ChatGPT and Claude formatted data
+
+**Files to modify:** `backend/api/ingest.py`, `backend/schemas.py`
+
+### Task 10.5: Auto-Capture Mode
+
+**Description:** Optionally auto-detect when a conversation ends and capture it without user action.
+
+**Subtasks:**
+1. Monitor DOM for conversation completion signals (new messages stop appearing)
+2. Debounce captures (don't re-capture on every message)
+3. Show subtle notification badge on extension icon when auto-captured
+4. Store capture log in extension local storage
+5. Add configurable delay before auto-capture (default: 30 seconds of inactivity)
+
+**Acceptance Criteria:**
+- [ ] Auto-captures after configurable inactivity period
+- [ ] Badge shows capture count
+- [ ] No duplicate captures of same conversation
+- [ ] User can review and undo auto-captures
+
+---
+
+## PHASE 11: Desktop Application (Tauri)
+
+> **Goal:** Package Cortex as a native desktop app. Double-click to install, no terminal needed.
+
+### Task 11.1: Tauri App Shell
+
+**Description:** Wrap the frontend + backend in a Tauri application for native desktop distribution.
+
+**Subtasks:**
+1. Initialize Tauri project with the existing frontend as the webview content
+2. Configure Tauri to spawn the FastAPI backend as a sidecar process
+3. Bundle Ollama or detect system Ollama installation
+4. Create app icons and metadata for Windows, macOS, Linux
+5. Configure auto-updater for future releases
+
+**Acceptance Criteria:**
+- [ ] Double-click `.exe` / `.dmg` / `.AppImage` launches full Cortex
+- [ ] Backend starts automatically as sidecar
+- [ ] Ollama models downloaded on first launch if not present
+- [ ] App appears in system tray with status indicator
+
+**New files:** `src-tauri/`, `src-tauri/tauri.conf.json`, `src-tauri/src/main.rs`
+
+### Task 11.2: System Tray Integration
+
+**Description:** Add system tray icon with quick actions.
+
+**Subtasks:**
+1. System tray icon showing Cortex status (green = running, yellow = processing, red = error)
+2. Tray menu: Open Cortex, Capture from Browser, Search Memory, Settings, Quit
+3. Global hotkey for quick search (e.g., `Ctrl+Shift+M` → opens search overlay)
+4. Notification when new conversations are captured
+
+### Task 11.3: First-Run Experience
+
+**Description:** Guided setup wizard on first launch.
+
+**Subtasks:**
+1. Welcome screen explaining what Cortex does
+2. Ollama model download progress (show download size, ETA)
+3. First conversation import (drag-drop or browse)
+4. Quick tour of the 3D visualization
+5. MCP integration setup helper (optional, for Claude Desktop users)
+
+**Acceptance Criteria:**
+- [ ] New user goes from install → first visualization in under 5 minutes
+- [ ] Clear progress indicators during model download
+- [ ] Skip option for experienced users
+
+---
+
+## PHASE 12: Knowledge Graph & Smart Features
+
+> **Goal:** Go beyond flat semantic similarity. Extract structure from conversations.
+
+### Task 12.1: Entity Extraction
+
+**Description:** Extract named entities (people, technologies, projects, concepts) from conversations using the local LLM.
+
+**Subtasks:**
+1. After ingestion, run entity extraction via Ollama (Qwen 2.5)
+2. Store entities in new `Entity` and `ConversationEntity` tables
+3. Build entity co-occurrence graph
+4. API endpoint: `GET /api/entities` — list all entities with frequency
+5. API endpoint: `GET /api/entities/{name}/conversations` — conversations mentioning entity
+
+**New DB models:** `Entity(id, name, type, frequency)`, `ConversationEntity(conversation_id, entity_id, mentions)`
+
+### Task 12.2: Temporal View
+
+**Description:** Add a timeline view alongside the 3D view, showing conversations over time.
+
+**Subtasks:**
+1. New frontend view mode: Timeline (2D horizontal timeline)
+2. Group conversations by day/week/month
+3. Color-code by cluster (same as 3D view)
+4. Click to expand and see conversations for that time period
+5. Toggle between 3D Space and Timeline via tab/button
+
+### Task 12.3: Smart Suggestions
+
+**Description:** When a user starts a new AI conversation, proactively suggest relevant past context.
+
+**Subtasks:**
+1. MCP tool `suggest_context` — takes current conversation snippet, returns top-3 relevant past conversations
+2. Include confidence score and relevance explanation
+3. Format as a brief context card (title, summary, key quote)
+4. Configurable: number of suggestions, minimum relevance threshold
+
+### Task 12.4: Conversation Insights Dashboard
+
+**Description:** Analytics page showing patterns in the user's AI usage.
+
+**Subtasks:**
+1. New frontend route/panel: Insights
+2. Show: total conversations, messages, topics breakdown, cluster distribution
+3. Most discussed topics over time (trend chart)
+4. Conversation frequency heatmap (like GitHub contribution graph)
+5. Average conversation length, most active times
+
+---
+
+## PHASE 13: Multi-Platform Memory Layer
+
+> **Goal:** Cortex isn't just for ChatGPT/Claude. It's the universal AI memory.
+
+### Task 13.1: Gemini Parser
+
+**Description:** Parse Google Gemini conversation exports.
+
+**Subtasks:**
+1. Identify Gemini export format (HTML or JSON from Google Takeout)
+2. Create `parsers/gemini_parser.py` following base parser interface
+3. Add tests with sample Gemini exports
+4. Register in parser factory for auto-detection
+
+### Task 13.2: Copilot Parser
+
+**Description:** Parse Microsoft Copilot conversation exports.
+
+**Subtasks:**
+1. Research Copilot export format
+2. Create `parsers/copilot_parser.py`
+3. Add tests
+
+### Task 13.3: Perplexity Parser
+
+**Description:** Parse Perplexity AI conversation exports.
+
+**Subtasks:**
+1. Research Perplexity export format
+2. Create `parsers/perplexity_parser.py`
+3. Add tests
+
+### Task 13.4: Generic Markdown/JSON Import
+
+**Description:** Allow importing conversations from any source via a standard markdown or JSON format.
+
+**Subtasks:**
+1. Define Cortex Universal Format (CUF) — a simple JSON schema for conversations
+2. Create `parsers/generic_parser.py` that accepts CUF
+3. Document the format so third parties can export to it
+4. Add markdown import (alternating `## User` / `## Assistant` sections)
+
+---
+
+## PHASE 14: Production Polish & Distribution
+
+> **Goal:** Make Cortex ready for public release.
+
+### Task 14.1: Error Handling & Resilience
+
+**Subtasks:**
+1. Add retry logic for Ollama calls (model loading, network timeouts)
+2. Graceful degradation when Ollama is not running (show cached data, disable ingestion)
+3. Database migration system (Alembic) for schema changes between versions
+4. Crash recovery — detect incomplete ingestion and offer to resume
+5. Input validation on all API endpoints
+
+### Task 14.2: Performance Optimization
+
+**Subtasks:**
+1. Incremental UMAP — add new conversations without re-running full UMAP
+2. Background job queue for ingestion (don't block the API)
+3. Frontend: WebGL instanced rendering for 10k+ nodes
+4. Lazy loading for conversation detail panel (don't fetch all messages upfront)
+5. Vector store indexing optimization for 10k+ conversations
+
+### Task 14.3: Data Export & Portability
+
+**Subtasks:**
+1. Export all data as JSON (conversations + embeddings + clusters)
+2. Export selected conversations as markdown
+3. Import from a previous Cortex export (backup/restore)
+4. Clear all data option with confirmation
+
+### Task 14.4: Security Hardening
+
+**Subtasks:**
+1. Input sanitization on all file uploads (prevent path traversal, XXE)
+2. Content Security Policy headers on frontend
+3. Rate limiting on API endpoints
+4. Validate file sizes before processing (configurable max)
+5. Sanitize HTML content before storing (prevent stored XSS)
+
+### Task 14.5: Landing Page & Distribution
+
+**Subtasks:**
+1. Create project website/landing page (can be GitHub Pages)
+2. GitHub Releases with pre-built binaries (Windows `.exe`, macOS `.dmg`, Linux `.AppImage`)
+3. GitHub Actions CI/CD: build, test, release pipeline
+4. Product Hunt launch preparation
+5. Demo video showcasing the full workflow
+
+---
+
+## 8.2 Out of Scope (For Now)
+
+### Explicitly NOT included in this roadmap:
+- Cloud-hosted version / SaaS
+- Multi-user support / team features
+- Real-time collaboration
+- User authentication/accounts
+- Paid features or pricing tiers
+- Mobile app (native iOS/Android)
+- Fine-tuned embedding models
+- GPU-accelerated inference
+
+### Future Considerations (Post v1.0):
+1. **Cloud Tier:** Optional hosted version for users who don't want local setup
+2. **Team Memory:** Shared organizational AI memory with access controls
+3. **Custom Models:** Let users bring their own embedding/summarization models
+4. **Plugin System:** Third-party integrations (Notion, Obsidian, Slack)
+5. **Mobile Companion:** Read-only mobile app for searching memories on the go
 
 ---
 
@@ -1633,11 +2062,14 @@ The frontend currently generates fake data but expects this structure from `GET 
 
 ## 10. Sign-off & Approval
 
-**Product Owner:** [Name]  
-**Tech Lead:** [Name]  
-**Date:** February 3, 2026
+**Product Owner:** Divyam
+**Tech Lead:** Vibhor
+**Date:** February 27, 2026
 
-**Status:**  APPROVED - Ready for Implementation
+**Status:** APPROVED - Open-Core Local-First Roadmap Active
+
+**Hackathon Phase:** Complete (CxC AI Hackathon Winners)
+**Market-Ready Phase:** In Progress (Phases 8-14)
 
 ---
 
