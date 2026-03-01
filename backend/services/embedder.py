@@ -36,7 +36,7 @@ EMBEDDING_DIMENSION = 768  # nomic-embed-text produces 768D embeddings
 # HuggingFace configuration
 HF_API_TOKEN = os.getenv("HF_API_TOKEN", "")
 HF_MODEL_ID = os.getenv("HF_EMBEDDING_MODEL", "BAAI/bge-base-en-v1.5")
-HF_MODEL_URL = f"https://api-inference.huggingface.co/models/{HF_MODEL_ID}"
+HF_MODEL_URL = f"https://router.huggingface.co/models/{HF_MODEL_ID}"
 
 
 class PermanentAPIError(Exception):
