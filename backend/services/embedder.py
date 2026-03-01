@@ -21,7 +21,8 @@ from tenacity import (
     retry,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type
+    retry_if_exception_type,
+    retry_if_not_exception_type
 )
 
 from backend.services.provider import get_embedding_provider
@@ -165,15 +166,10 @@ async def generate_embeddings_batch(
 # HuggingFace Inference API
 # ---------------------------------------------------------------------------
 
-def _should_retry_hf(exc: BaseException) -> bool:
-    """Only retry transient errors, not permanent 4xx."""
-    return not isinstance(exc, PermanentAPIError)
-
-
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=2, min=4, max=30),
-    retry=retry_if_exception_type(_should_retry_hf),
+    retry=retry_if_not_exception_type(PermanentAPIError),
     reraise=True
 )
 async def _call_huggingface_embedding_api(text: str) -> List[float]:
@@ -186,7 +182,7 @@ async def _call_huggingface_embedding_api(text: str) -> List[float]:
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=2, min=4, max=30),
-    retry=retry_if_exception_type(_should_retry_hf),
+    retry=retry_if_not_exception_type(PermanentAPIError),
     reraise=True
 )
 async def _call_huggingface_embedding_api_batch(texts: List[str]) -> List[List[float]]:

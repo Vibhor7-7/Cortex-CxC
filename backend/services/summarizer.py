@@ -41,6 +41,9 @@ _cache_base = Path(os.getenv("CACHE_DIR", str(Path(__file__).parent.parent.paren
 CACHE_DIR = _cache_base / "summaries"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
+# Groq rate-limit semaphore: only 1 concurrent call to avoid 30 RPM limit
+_groq_semaphore = asyncio.Semaphore(1)
+
 # Shared prompts
 SUMMARIZE_SYSTEM_PROMPT = """You are a helpful assistant that analyzes AI chat conversations.
 Your task is to:
@@ -149,7 +152,13 @@ async def summarize_conversation(
 async def _call_groq(conversation_text: str) -> Tuple[str, List[str]]:
     """
     Call Groq API (llama-3.1-8b-instant) with structured JSON output.
+    Uses semaphore to serialize calls and stay under 30 RPM.
     """
+    async with _groq_semaphore:
+        return await _call_groq_inner(conversation_text)
+
+
+async def _call_groq_inner(conversation_text: str) -> Tuple[str, List[str]]:
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
