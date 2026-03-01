@@ -12,6 +12,7 @@ This module handles:
 import os
 import json
 import hashlib
+import asyncio
 from typing import List, Dict, Any
 from pathlib import Path
 
@@ -33,7 +34,13 @@ EMBEDDING_DIMENSION = 768  # nomic-embed-text produces 768D embeddings
 
 # HuggingFace configuration
 HF_API_TOKEN = os.getenv("HF_API_TOKEN", "")
-HF_MODEL_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/nomic-ai/nomic-embed-text-v1.5"
+HF_MODEL_ID = os.getenv("HF_EMBEDDING_MODEL", "BAAI/bge-base-en-v1.5")
+HF_MODEL_URL = f"https://api-inference.huggingface.co/models/{HF_MODEL_ID}"
+
+
+class PermanentAPIError(Exception):
+    """Non-retryable API error (4xx except 429)."""
+    pass
 
 # Cache directory for embeddings (configurable via env for Docker)
 _cache_base = Path(os.getenv("CACHE_DIR", str(Path(__file__).parent.parent.parent / ".cache")))
@@ -158,80 +165,88 @@ async def generate_embeddings_batch(
 # HuggingFace Inference API
 # ---------------------------------------------------------------------------
 
+def _should_retry_hf(exc: BaseException) -> bool:
+    """Only retry transient errors, not permanent 4xx."""
+    return not isinstance(exc, PermanentAPIError)
+
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=2, min=4, max=30),
-    retry=retry_if_exception_type(Exception),
+    retry=retry_if_exception_type(_should_retry_hf),
     reraise=True
 )
 async def _call_huggingface_embedding_api(text: str) -> List[float]:
     """
     Call HuggingFace Inference API for a single text embedding.
-    Uses nomic-embed-text-v1.5 (same 768D as local Ollama model).
     """
-    try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                HF_MODEL_URL,
-                headers={"Authorization": f"Bearer {HF_API_TOKEN}"},
-                json={"inputs": text, "options": {"wait_for_model": True}}
-            )
-            response.raise_for_status()
-
-        result = response.json()
-        # HF returns [[768 floats]] for single input
-        embedding = result[0] if isinstance(result[0], list) else result
-
-        if len(embedding) != EMBEDDING_DIMENSION:
-            raise ValueError(
-                f"Expected {EMBEDDING_DIMENSION}D embedding, got {len(embedding)}D"
-            )
-        return embedding
-
-    except httpx.HTTPError as e:
-        raise Exception(f"HuggingFace Embedding API call failed: {e}")
-    except Exception as e:
-        if "HuggingFace" in str(e):
-            raise
-        raise Exception(f"HuggingFace embedding generation failed: {e}")
+    return (await _hf_request([text]))[0]
 
 
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=2, min=4, max=30),
-    retry=retry_if_exception_type(Exception),
+    retry=retry_if_exception_type(_should_retry_hf),
     reraise=True
 )
 async def _call_huggingface_embedding_api_batch(texts: List[str]) -> List[List[float]]:
     """
     Call HuggingFace Inference API for multiple texts in a single HTTP call.
-    HF supports native batching — send a list of strings, get a list of embeddings.
     """
+    return await _hf_request(texts)
+
+
+async def _hf_request(inputs) -> List[List[float]]:
+    """Shared HuggingFace API call with proper error handling."""
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
                 HF_MODEL_URL,
                 headers={"Authorization": f"Bearer {HF_API_TOKEN}"},
-                json={"inputs": texts, "options": {"wait_for_model": True}}
+                json={"inputs": inputs, "options": {"wait_for_model": True}}
             )
+
+            # Don't retry permanent errors (401, 403, 404, 410)
+            if response.status_code in (401, 403, 404, 410):
+                raise PermanentAPIError(
+                    f"HuggingFace API returned {response.status_code} for {HF_MODEL_ID}: "
+                    f"{response.text}"
+                )
+
             response.raise_for_status()
 
-        result = response.json()  # [[768 floats], [768 floats], ...]
+        result = response.json()
 
-        for i, embedding in enumerate(result):
+        # Handle HF error responses (model loading, etc.)
+        if isinstance(result, dict) and "error" in result:
+            raise Exception(f"HuggingFace API error: {result['error']}")
+
+        # Normalize response: HF returns [[768 floats], ...] for sentence-transformers
+        # or [[[per-token], ...], ...] for feature-extraction
+        embeddings = []
+        for item in result:
+            if isinstance(item, list) and len(item) > 0 and isinstance(item[0], list):
+                # Per-token embeddings — use first token ([CLS]) as sentence embedding
+                embedding = item[0]
+            else:
+                embedding = item
+
             if len(embedding) != EMBEDDING_DIMENSION:
                 raise ValueError(
-                    f"Expected {EMBEDDING_DIMENSION}D embedding at index {i}, "
-                    f"got {len(embedding)}D"
+                    f"Expected {EMBEDDING_DIMENSION}D embedding, got {len(embedding)}D"
                 )
-        return result
+            embeddings.append(embedding)
 
+        return embeddings
+
+    except (PermanentAPIError, ValueError):
+        raise
     except httpx.HTTPError as e:
-        raise Exception(f"HuggingFace Embedding API batch call failed: {e}")
+        raise Exception(f"HuggingFace Embedding API call failed: {e}")
     except Exception as e:
-        if "HuggingFace" in str(e):
+        if "HuggingFace" in str(e) or "PermanentAPI" in str(e):
             raise
-        raise Exception(f"HuggingFace batch embedding generation failed: {e}")
+        raise Exception(f"HuggingFace embedding generation failed: {e}")
 
 
 # ---------------------------------------------------------------------------

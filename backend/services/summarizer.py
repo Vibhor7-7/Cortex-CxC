@@ -12,6 +12,7 @@ This module handles:
 import os
 import json
 import hashlib
+import asyncio
 from typing import Dict, List, Any, Tuple
 from pathlib import Path
 
@@ -174,7 +175,10 @@ async def _call_groq(conversation_text: str) -> Tuple[str, List[str]]:
         if not content:
             raise ValueError("Empty response from Groq")
 
-        return _parse_summary_response(content)
+        result = _parse_summary_response(content)
+        # Rate-limit: ~2s between calls keeps us under Groq's 30 RPM
+        await asyncio.sleep(2)
+        return result
 
     except json.JSONDecodeError as e:
         raise ValueError(f"Failed to parse JSON response from Groq: {e}")
