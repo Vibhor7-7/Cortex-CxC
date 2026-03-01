@@ -15,10 +15,10 @@
 // ---------------------------------------------------------------------------
 
 /** @type {string} Backend base URL (no trailing slash) */
-let BASE_URL = window.__CORTEX_API_URL__
+let BASE_URL = (window.__CORTEX_API_URL__
   || (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
     ? "http://localhost:8000"
-    : window.location.origin);
+    : window.location.origin)).replace(/\/+$/, "");
 
 /** Max retries for transient failures (5xx / network errors) */
 const MAX_RETRIES = 3;
