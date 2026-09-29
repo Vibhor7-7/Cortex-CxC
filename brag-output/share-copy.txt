@@ -1,0 +1,1 @@
+I've asked ChatGPT to tailor the same RBC resume three times. It forgot every time. So I built Cortex: every AI chat you've ever had, mapped as a 3D galaxy, searchable by keyword or meaning, and piped back into Claude over MCP so you never start a chat from scratch again.

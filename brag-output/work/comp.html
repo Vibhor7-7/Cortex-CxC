@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Cortex brag</title>
+<link rel="stylesheet" href="/frontend/styles.css" />
+<style>
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  html, body { width: 1440px; height: 810px; }
+  canvas#gl { position: absolute; inset: 0; width: 1440px; height: 810px; }
+  .layer { position: absolute; inset: 0; pointer-events: none; }
+  #ui { opacity: 0; }
+  #ui .topbar { right: calc(var(--ui-pad) + var(--panel-w) + var(--panel-gap)); }
+  #results { display: block; width: 560px; max-height: none; overflow: hidden; }
+  .resTitle { max-width: 440px; font-size: 14px; }
+  #panel { width: 340px; }
+  #panel .snippet { max-height: none; }
+  #panel .neighbors { max-height: none; }
+
+  #dim { background: rgba(4,6,12,0.0); }
+
+  /* chat windows (Cortex glass styling) */
+  .chatStack { position: absolute; left: 50%; top: 262px; width: 780px; transform: translate(-50%,0); transform-origin: 50% 30%; }
+  .chatCard {
+    position: absolute; left: 0; right: 0; top: 0;
+    transform-origin: 50% 0%;
+    background: rgba(10, 14, 26, 0.92);
+    border: 1px solid rgba(140, 190, 255, 0.22);
+    border-radius: 20px;
+    box-shadow: 0 24px 70px rgba(0,0,0,0.6);
+    padding: 18px 22px 22px;
+    backdrop-filter: blur(12px);
+  }
+  .chatHead { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--muted); padding-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.07); }
+  .chatHead .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+  .chatHead .date { margin-left: auto; font-size: 12px; opacity: .8; }
+  .chatBody { display: flex; flex-direction: column; gap: 16px; padding-top: 18px; min-height: 130px; }
+  .uMsg { align-self: flex-end; max-width: 560px; background: rgba(140,190,255,0.14); border: 1px solid rgba(140,190,255,0.28); border-radius: 16px 16px 4px 16px; padding: 12px 16px; font-size: 19px; line-height: 1.4; color: var(--text); }
+  .aMsg { display: flex; gap: 12px; align-items: flex-start; font-size: 19px; line-height: 1.45; color: var(--text); }
+  .aMsg .av { flex: 0 0 26px; height: 26px; border-radius: 8px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14); margin-top: 1px; }
+  .caret { display: inline-block; width: 2px; height: 1.05em; background: var(--accent); vertical-align: -3px; margin-left: 2px; }
+  .tool { border: 1px solid rgba(140,190,255,0.25); background: rgba(140,190,255,0.06); border-radius: 14px; padding: 10px 14px; font-size: 14px; color: var(--muted); }
+  .tool .th { display: flex; gap: 10px; align-items: center; color: var(--text); font-size: 15px; }
+  .tool code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--accent); font-size: 14px; }
+  .tool .row2 { display: flex; gap: 10px; align-items: center; padding: 6px 0 0 4px; font-size: 14px; color: rgba(230,240,255,0.86); }
+  .tool .row2 .cd { width: 8px; height: 8px; border-radius: 50%; }
+  .tool .row2 .sc { margin-left: auto; }
+
+  .headline { position: absolute; left: 0; right: 0; text-align: center; font-weight: 750; letter-spacing: -1.4px; color: #EAF2FF; font-size: 58px; line-height: 1.08; }
+  .headline em { font-style: normal; background: linear-gradient(90deg, #8CBEFF, #00D4FF); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .caption { position: absolute; left: 56px; bottom: 54px; font-weight: 720; letter-spacing: -0.9px; color: #EAF2FF; font-size: 44px; line-height: 1.1; text-shadow: 0 4px 30px rgba(0,0,0,0.9); max-width: 900px; }
+  .caption em { font-style: normal; color: #8CBEFF; }
+
+  .brand { position: absolute; font-weight: 780; letter-spacing: -4px; font-size: 132px; line-height: 1; background: linear-gradient(100deg, #EAF2FF 10%, #8CBEFF 55%, #00D4FF 95%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .sub { position: absolute; font-size: 30px; font-weight: 500; letter-spacing: -0.4px; color: rgba(230,240,255,0.86); }
+
+  .lbl { position: absolute; font-size: 15px; font-weight: 600; color: #EAF2FF; white-space: nowrap; padding: 5px 10px; border-radius: 999px; background: rgba(10,14,26,0.72); border: 1px solid rgba(140,190,255,0.22); backdrop-filter: blur(6px); }
+  .lbl .cd { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; }
+
+  #cursor { position: absolute; width: 26px; height: 26px; }
+  #clickRing { position: absolute; width: 40px; height: 40px; border-radius: 50%; border: 2px solid rgba(140,190,255,0.9); }
+  #fade { background: #070A12; }
+</style>
+</head>
+<body>
+<div id="ui">
+  <div class="topbar">
+    <div class="searchWrap" id="sw">
+      <span class="badge">Cortex</span>
+      <span id="searchText" style="flex:1;font-size:14px;color:var(--text)"></span>
+      <span class="badge">Orbit</span>
+    </div>
+    <div class="pill"><label>Cluster</label><select><option>All</option></select></div>
+    <div class="pill"><button class="pillBtn" type="button">↑ Upload</button></div>
+    <div class="pill">
+      <label>Selected</label><span class="badge" id="selCount">0</span>
+      <button class="pillBtn" id="gp" type="button" disabled>Generate system prompt</button>
+    </div>
+  </div>
+  <div id="results"></div>
+  <div id="panel">
+    <div class="muted">Selected memory</div>
+    <h3 id="pTitle">None</h3>
+    <div class="kv">
+      <div>Cluster</div><div id="pCluster">—</div>
+      <div>Time</div><div id="pTime">—</div>
+      <div>Messages</div><div id="pMsgCount">—</div>
+      <div>Tags</div><div id="pTags">—</div>
+    </div>
+    <div class="snippet" id="pSnippet"></div>
+    <div style="margin-top:10px" class="muted">Neighbors</div>
+    <div class="neighbors" id="pNeighbors"></div>
+  </div>
+</div>
+
+<div class="layer" id="labels"></div>
+<div class="layer" id="dim"></div>
+
+<div class="layer" id="s1">
+  <div class="headline" id="h1" style="top:92px">You've had this exact chat <em>3 times.</em></div>
+  <div class="chatStack" id="stack1"></div>
+</div>
+
+<div class="layer" id="scrim" style="background: radial-gradient(ellipse 900px 520px at 0% 100%, rgba(7,10,18,0.85), rgba(7,10,18,0) 70%)"></div>
+<div class="layer" id="s2">
+  <div class="brand" id="b2" style="left:64px; bottom:118px">Cortex</div>
+  <div class="sub" id="sub2" style="left:70px; bottom:66px">Every AI chat you've had, mapped in 3D.</div>
+</div>
+
+<div class="layer" id="caps">
+  <div class="caption" id="c3">Find any past chat<br>by <em>keyword</em> or <em>meaning</em>.</div>
+  <div class="caption" id="c4">See what it<br><em>connects</em> to.</div>
+</div>
+
+<div class="layer" id="s5">
+  <div class="headline" id="h5" style="top:92px">Now it <em>remembers.</em> Plugs into Claude via MCP.</div>
+  <div class="chatStack" id="stack5" style="top:228px"></div>
+</div>
+
+<div class="layer" id="s6">
+  <div class="brand" id="b6" style="left:0; right:0; text-align:center; top:300px">Cortex</div>
+  <div class="sub" id="sub6" style="left:0; right:0; text-align:center; top:460px">Never start a chat from scratch again.</div>
+</div>
+
+<div class="layer">
+  <svg id="cursor" viewBox="0 0 24 24"><path d="M4 2 L4 20 L9 15.5 L12.5 22.5 L15.5 21 L12 14 L19 14 Z" fill="#fff" stroke="#070A12" stroke-width="1.4" stroke-linejoin="round"/></svg>
+  <div id="clickRing"></div>
+</div>
+<div class="layer" id="fade"></div>
+
+<script type="importmap">
+{ "imports": { "three": "/brag-output/work/node_modules/three/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from "three";
+
+const W = 1440, H = 810, DPR = 4/3;
+const D = await (await fetch("./data.json")).json();
+
+// ---------- time helpers ----------
+const clamp = (x, a=0, b=1) => Math.max(a, Math.min(b, x));
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const oC = x => 1 - Math.pow(1 - x, 3);
+const ioC = x => x < 0.5 ? 4*x*x*x : 1 - Math.pow(-2*x + 2, 3) / 2;
+const oB = x => { const c1 = 1.4, c3 = c1 + 1; return 1 + c3*Math.pow(x-1,3) + c1*Math.pow(x-1,2); };
+const win = (t, a, b, c, d) => Math.min(oC(seg(t, a, b)), 1 - ioC(seg(t, c, d)));
+const lerp = (a, b, k) => a + (b - a) * k;
+const typed = (s, t, a, b) => s.slice(0, Math.round(s.length * seg(t, a, b)));
+const $ = id => document.getElementById(id);
+const setO = (el, o) => { el.style.opacity = o.toFixed(3); el.style.visibility = o < 0.002 ? "hidden" : "visible"; };
+
+// ---------- data ----------
+const SCALE = 8;
+const N = D.length;
+const cen = [0,0,0];
+for (let k=0;k<3;k++) { const v = D.map(o => o.p[k]); cen[k] = (Math.min(...v) + Math.max(...v)) / 2; }
+const P = D.map(o => new THREE.Vector3((o.p[0]-cen[0])*SCALE, (o.p[1]-cen[1])*SCALE, (o.p[2]-cen[2])*SCALE));
+const PAL = ["#00D4FF","#FF6B9D","#7CFF6B","#FFA64D","#B48CFF","#FFE44D","#FF4D6A","#4DFFF0"];
+const col = D.map(o => new THREE.Color(PAL[o.c % PAL.length]));
+const CN = {}; D.forEach(o => CN[o.c] = o.cn);
+const SEL = 8; // "Resume Tailoring for RBC"
+const idxOf = title => D.findIndex(o => o.title === title);
+
+function mulberry32(a) { return function() { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const rng = mulberry32(1337);
+const seedPh = D.map(() => [rng()*6.28, rng()*6.28, rng()*6.28, rng()*0.35]);
+
+// ---------- three (shaders from frontend/src/main.js) ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(DPR);
+renderer.setSize(W, H);
+renderer.setClearColor(new THREE.Color(0x070A12), 1);
+renderer.domElement.id = "gl";
+document.body.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+const FOG_COLOR = new THREE.Color(0x070A12);
+const camera = new THREE.PerspectiveCamera(55, W/H, 0.1, 3000);
+
+function makeCircleSprite(size=64) {
+  const cnv = document.createElement("canvas"); cnv.width = cnv.height = size;
+  const ctx = cnv.getContext("2d");
+  const grd = ctx.createRadialGradient(size/2,size/2,0,size/2,size/2,size/2);
+  grd.addColorStop(0.0,"rgba(255,255,255,1.0)"); grd.addColorStop(0.35,"rgba(255,255,255,0.75)"); grd.addColorStop(1.0,"rgba(255,255,255,0.0)");
+  ctx.fillStyle = grd; ctx.fillRect(0,0,size,size);
+  const tex = new THREE.CanvasTexture(cnv);
+  tex.minFilter = THREE.LinearMipMapLinearFilter; tex.magFilter = THREE.LinearFilter;
+  return tex;
+}
+const spriteTex = makeCircleSprite(64);
+
+const pos = new Float32Array(N*3), aColor = new Float32Array(N*3), aAlpha = new Float32Array(N), aBoost = new Float32Array(N);
+D.forEach((o,i) => { aColor[i*3]=col[i].r; aColor[i*3+1]=col[i].g; aColor[i*3+2]=col[i].b; });
+const geom = new THREE.BufferGeometry();
+geom.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+geom.setAttribute("aColor", new THREE.BufferAttribute(aColor, 3));
+geom.setAttribute("aAlpha", new THREE.BufferAttribute(aAlpha, 1));
+geom.setAttribute("aBoost", new THREE.BufferAttribute(aBoost, 1));
+const pointMat = new THREE.ShaderMaterial({
+  uniforms: { uPointSize: { value: 9.0 * DPR }, uSprite: { value: spriteTex }, uTime: { value: 0 },
+    uFogColor: { value: FOG_COLOR }, uFogNear: { value: 80 }, uFogFar: { value: 350 } },
+  vertexShader: `
+    uniform float uPointSize; attribute vec3 aColor; attribute float aAlpha; attribute float aBoost;
+    varying vec3 vColor; varying float vAlpha; varying float vDepth;
+    void main() {
+      vColor = aColor; vAlpha = aAlpha;
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      vDepth = -mv.z;
+      float size = uPointSize * aBoost;
+      float atten = 300.0 / (vDepth + 30.0);
+      gl_PointSize = size * atten;
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `
+    uniform sampler2D uSprite; uniform vec3 uFogColor; uniform float uFogNear; uniform float uFogFar;
+    varying vec3 vColor; varying float vAlpha; varying float vDepth;
+    void main() {
+      vec4 spr = texture2D(uSprite, gl_PointCoord);
+      float alpha = spr.a * vAlpha;
+      float core = smoothstep(0.0, 0.35, spr.r);
+      vec3 col = vColor * (0.75 + core * 0.55);
+      col *= (0.95 + spr.r * 0.35);
+      float fogFactor = smoothstep(uFogNear, uFogFar, vDepth);
+      col = mix(col, uFogColor, fogFactor);
+      alpha *= (1.0 - fogFactor*0.65);
+      if (alpha < 0.02) discard;
+      gl_FragColor = vec4(col, alpha);
+    }`,
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+});
+scene.add(new THREE.Points(geom, pointMat));
+
+// halo
+const haloPos = new Float32Array(3);
+const haloGeom = new THREE.BufferGeometry(); haloGeom.setAttribute("position", new THREE.BufferAttribute(haloPos, 3));
+const haloMat = new THREE.ShaderMaterial({
+  uniforms: { uPointSize: { value: 20.0 * DPR }, uSprite: { value: spriteTex }, uColor: { value: new THREE.Color(0xbfe2ff) }, uA: { value: 0 } },
+  vertexShader: `uniform float uPointSize; varying float vDepth;
+    void main(){ vec4 mv = modelViewMatrix*vec4(position,1.0); vDepth=-mv.z; gl_PointSize = uPointSize*(280.0/(vDepth+35.0)); gl_Position = projectionMatrix*mv; }`,
+  fragmentShader: `uniform sampler2D uSprite; uniform vec3 uColor; uniform float uA;
+    void main(){ vec4 spr = texture2D(uSprite, gl_PointCoord); float a = spr.a; if (a < 0.02) discard; gl_FragColor = vec4(uColor, a*0.75*uA); }`,
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+});
+scene.add(new THREE.Points(haloGeom, haloMat));
+
+// stars
+const SC = 1200, starPos = new Float32Array(SC*3), starCol = new Float32Array(SC*3);
+for (let i=0;i<SC;i++) {
+  const r = 500 + rng()*300, u = rng()*2-1, tt = rng()*Math.PI*2, s = Math.sqrt(1-u*u);
+  starPos[i*3]=r*s*Math.cos(tt); starPos[i*3+1]=r*u; starPos[i*3+2]=r*s*Math.sin(tt);
+  const c = new THREE.Color().setHSL(0.58 + rng()*0.06, 0.20, 0.55 + rng()*0.15);
+  starCol[i*3]=c.r; starCol[i*3+1]=c.g; starCol[i*3+2]=c.b;
+}
+const starsGeom = new THREE.BufferGeometry();
+starsGeom.setAttribute("position", new THREE.BufferAttribute(starPos,3));
+starsGeom.setAttribute("color", new THREE.BufferAttribute(starCol,3));
+const starsMat = new THREE.PointsMaterial({ size: 1.6, sizeAttenuation: true, transparent: true, opacity: 0.35, vertexColors: true, depthWrite: false, blending: THREE.AdditiveBlending });
+scene.add(new THREE.Points(starsGeom, starsMat));
+
+// ambient kNN web (buildAllEdges) + selection edges
+const webPairs = [];
+{ const seen = new Set();
+  D.forEach((o,i) => o.nb.slice(0,3).forEach(([j,s]) => { const k = i<j ? i+"-"+j : j+"-"+i; if (!seen.has(k) && s > 0.35) { seen.add(k); webPairs.push([i,j]); } })); }
+const webPos = new Float32Array(webPairs.length*6), webCol = new Float32Array(webPairs.length*6);
+const webGeom = new THREE.BufferGeometry();
+webGeom.setAttribute("position", new THREE.BufferAttribute(webPos,3));
+webGeom.setAttribute("color", new THREE.BufferAttribute(webCol,3));
+const webMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.0, blending: THREE.AdditiveBlending, depthWrite: false });
+scene.add(new THREE.LineSegments(webGeom, webMat));
+
+const NB = D[SEL].nbu.map(([j]) => j);
+const selPos = new Float32Array(NB.length*6), selCol = new Float32Array(NB.length*6);
+const selGeom = new THREE.BufferGeometry();
+selGeom.setAttribute("position", new THREE.BufferAttribute(selPos,3));
+selGeom.setAttribute("color", new THREE.BufferAttribute(selCol,3));
+const selMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
+scene.add(new THREE.LineSegments(selGeom, selMat));
+
+// ---------- search (query: "resume for data roles") ----------
+const QUERY = "resume for data roles";
+const RES_TITLES = ["Resume Bullet Rewrite", "Resume Tailoring for RBC", "Building a Clean Skills Section", "Cover letter request", "ATS layout"];
+const RES_IDX = RES_TITLES.map(idxOf);
+const RES_SCORES = ["0.71", "0.68", "0.62", "0.59", "0.54"];
+const MATCH = new Set(D.map((o,i) => RES_TITLES.includes(o.title) ? i : -1).filter(i => i >= 0));
+$("results").innerHTML = RES_IDX.map((i,r) => `
+  <div class="resItem" data-r="${r}">
+    <div class="resTitle">${D[i].title}</div>
+    <div class="resCheck"><input type="checkbox" /><span>${RES_SCORES[r]}</span></div>
+  </div>`).join("");
+const resItems = [...document.querySelectorAll("#results .resItem")];
+
+// panel (populatePanel)
+{
+  const n = D[SEL];
+  $("pTitle").textContent = n.title;
+  $("pCluster").textContent = `${n.c} — ${n.cn}`;
+  $("pTime").textContent = n.t.slice(0,10);
+  $("pMsgCount").textContent = n.mc;
+  $("pTags").textContent = n.tags.join(", ");
+  $("pSnippet").textContent = n.summary;
+  $("pNeighbors").innerHTML = n.nbu.map(([j,s]) => `<div class="nbItem"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px"><span class="cd" style="display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:8px;background:${PAL[D[j].c]}"></span>${D[j].title}</span><span class="badge">${s.toFixed(2)}</span></div>`).join("");
+}
+const nbItems = [...document.querySelectorAll("#pNeighbors .nbItem")];
+
+// ---------- labels (scene 2) ----------
+const LBL = ["Reading the Floor", "Big-O Explained Simply", "Cheap Eats Strategy", "2-Hour Focus System", "Resume Tailoring for RBC"].map(idxOf);
+$("labels").innerHTML = LBL.map(i => `<div class="lbl"><span class="cd" style="background:${PAL[D[i].c]};box-shadow:0 0 8px ${PAL[D[i].c]}"></span>${D[i].title}</div>`).join("");
+const lblEls = [...document.querySelectorAll(".lbl")];
+
+// ---------- chat cards ----------
+const ASK = "Help me tailor my resume for the RBC data analyst role.";
+const rbc = [8, 28, 46].map(i => D[i]);
+$("stack1").innerHTML = `
+  ${rbc.slice(1).reverse().map((o,k) => `<div class="chatCard ghost" data-k="${k}"><div class="chatHead"><span class="dot" style="background:${PAL[0]}"></span>${o.title}<span class="date">${o.t.slice(0,10)}</span></div><div class="chatBody"></div></div>`).join("")}
+  <div class="chatCard" id="c1front"><div class="chatHead"><span class="dot"></span>New chat<span class="date">today</span></div>
+    <div class="chatBody">
+      <div class="uMsg" id="u1"></div>
+      <div class="aMsg" id="a1"><span class="av"></span><span id="a1t">Sure! Paste your resume and the job description.</span></div>
+    </div></div>`;
+const ghosts = [...document.querySelectorAll("#stack1 .ghost")];
+$("stack5").innerHTML = `
+  <div class="chatCard" id="c5"><div class="chatHead"><span class="dot"></span>New chat<span class="date">today</span></div>
+    <div class="chatBody">
+      <div class="uMsg" id="u5"></div>
+      <div class="tool" id="tool5">
+        <div class="th"><span style="color:var(--good)">●</span><code>cortex · search_memory</code><span style="color:var(--muted);font-size:14px">"RBC data analyst resume"</span></div>
+        ${[8,7,11].map((i,k) => `<div class="row2" data-k="${k}"><span class="cd" style="background:${PAL[D[i].c]}"></span>${D[i].title}<span class="badge sc">${D[i].t.slice(0,10)}</span></div>`).join("")}
+      </div>
+      <div class="aMsg" id="a5"><span class="av" style="background:rgba(140,190,255,0.2);border-color:rgba(140,190,255,0.4)"></span><span id="a5t"></span></div>
+    </div></div>`;
+const toolRows = [...document.querySelectorAll("#tool5 .row2")];
+const REPLY = "Picking up from your RBC keyword checklist. Two bullets still need SQL and stakeholder language.";
+
+// ---------- camera path ----------
+function camFor(t) {
+  // orbit angle keeps drifting the whole time
+  const th = 0.55 + t * 0.075;
+  let dist = 135, target = new THREE.Vector3(0,0,0), elev = 0.28;
+  if (t < 8) dist = lerp(70, 150, oC(seg(t, 3.9, 6.2)));
+  if (t >= 8) dist = lerp(150, 125, ioC(seg(t, 8, 12)));
+  const sel = P[SEL].clone();
+  const kf = ioC(seg(t, 12.0, 13.4)) * (1 - ioC(seg(t, 15.4, 17.0)));
+  target.lerp(sel, kf * 0.85);
+  dist = lerp(dist, 80, kf);
+  if (t >= 17) dist = lerp(125, 165, ioC(seg(t, 17, 23)));
+  elev = lerp(0.28, 0.18, kf);
+  const x = Math.cos(th) * Math.cos(elev) * dist, z = Math.sin(th) * Math.cos(elev) * dist, y = Math.sin(elev) * dist;
+  camera.position.set(target.x + x, target.y + y, target.z + z);
+  camera.lookAt(target);
+  pointMat.uniforms.uFogNear.value = dist * 0.15 + 20; pointMat.uniforms.uFogFar.value = dist * 2.5 + 60;
+  // off-center framing when the panel is up so the node sits left of it
+  const shift = kf * 0.12 * (1 - seg(t, 15.4, 16));
+  camera.setViewOffset(W, H, shift * W, 0, W, H);
+}
+
+// ---------- seek ----------
+window.seek = function(t) {
+  // points: burst from center at 4.0
+  const burst = t < 3.9 ? 0 : 1;
+  for (let i=0;i<N;i++) {
+    const [a,b,c,dl] = seedPh[i];
+    const k = oC(seg(t, 3.95 + dl*0.6, 5.3 + dl*0.6));
+    const dr = 0.9;
+    const x = P[i].x * k + Math.sin(t*0.6 + a) * dr;
+    const y = P[i].y * k + Math.sin(t*0.5 + b) * dr;
+    const z = P[i].z * k + Math.sin(t*0.55 + c) * dr;
+    pos[i*3]=x; pos[i*3+1]=y; pos[i*3+2]=z;
+    let alpha = 0.95 * burst * seg(t, 3.95, 4.3);
+    let boost = 1.0 + 1.6 * (1 - seg(t, 3.95 + dl*0.6, 5.0 + dl*0.6)) * burst;
+    // search: matches flare, others dim
+    const sk = oC(seg(t, 9.35, 9.8)) * (1 - ioC(seg(t, 15.3, 16.2)));
+    const selk = oC(seg(t, 12.2, 12.8)) * (1 - ioC(seg(t, 15.3, 16.2)));
+    if (MATCH.has(i)) boost *= 1 + 0.9 * sk * (1 - selk); else alpha *= 1 - 0.72 * sk;
+    // selection
+    if (i === SEL) boost *= 1 + 0.5 * selk;
+    else if (NB.includes(i)) { boost *= 1 + 0.2 * selk; alpha = Math.max(alpha, 0.95 * selk); }
+    aAlpha[i] = alpha; aBoost[i] = boost;
+  }
+  geom.attributes.position.needsUpdate = true; geom.attributes.aAlpha.needsUpdate = true; geom.attributes.aBoost.needsUpdate = true;
+
+  // ambient web
+  webPairs.forEach(([i,j],e) => {
+    for (let k=0;k<3;k++) { webPos[e*6+k] = pos[i*3+k]; webPos[e*6+3+k] = pos[j*3+k]; }
+    const mix = col[i].clone().lerp(col[j], 0.5);
+    webCol[e*6]=webCol[e*6+3]=mix.r; webCol[e*6+1]=webCol[e*6+4]=mix.g; webCol[e*6+2]=webCol[e*6+5]=mix.b;
+  });
+  webGeom.attributes.position.needsUpdate = true; webGeom.attributes.color.needsUpdate = true;
+  webMat.opacity = 0.16 * seg(t, 4.6, 5.8) * (1 - 0.6 * oC(seg(t, 9.3, 9.8)) * (1 - seg(t, 15.3, 16.2)));
+
+  // selection edges grow outward
+  NB.forEach((j,e) => {
+    const g = oC(seg(t, 12.7 + e*0.12, 13.3 + e*0.12)) * (1 - ioC(seg(t, 15.3, 15.9)));
+    for (let k=0;k<3;k++) { const a = pos[SEL*3+k], b = pos[j*3+k]; selPos[e*6+k] = a; selPos[e*6+3+k] = a + (b-a)*g; }
+    const c = col[SEL].clone().lerp(col[j], 0.5).multiplyScalar(1.4*g);
+    selCol[e*6]=selCol[e*6+3]=c.r; selCol[e*6+1]=selCol[e*6+4]=c.g; selCol[e*6+2]=selCol[e*6+5]=c.b;
+  });
+  selGeom.attributes.position.needsUpdate = true; selGeom.attributes.color.needsUpdate = true;
+  haloPos[0]=pos[SEL*3]; haloPos[1]=pos[SEL*3+1]; haloPos[2]=pos[SEL*3+2]; haloGeom.attributes.position.needsUpdate = true;
+  haloMat.uniforms.uA.value = oC(seg(t, 11.6, 12.4)) * (1 - ioC(seg(t, 15.3, 15.9))) * (0.85 + 0.15*Math.sin(t*6));
+
+  starsMat.opacity = 0.35 * (0.35 + 0.65 * seg(t, 3.9, 5));
+  camFor(t);
+  renderer.render(scene, camera);
+
+  // ---------- DOM layers ----------
+  // Scene 1: hook
+  const s1o = 1 - ioC(seg(t, 3.7, 4.0));
+  setO($("s1"), s1o);
+  $("u1").innerHTML = typed(ASK, t, 0.2, 1.15) + (t < 1.3 ? `<span class="caret" style="opacity:${Math.floor(t*3)%2?0.2:1}"></span>` : "");
+  setO($("u1"), seg(t, 0.12, 0.25));
+  const a1 = oC(seg(t, 1.3, 1.55)); setO($("a1"), a1); $("a1").style.transform = `translateY(${(1-a1)*10}px)`;
+  const h1 = oC(seg(t, 1.45, 1.8)); setO($("h1"), h1); $("h1").style.transform = `translateY(${(1-h1)*18}px)`;
+  const collapse = ioC(seg(t, 3.6, 4.0));
+  $("stack1").style.transform = `translate(-50%,0) scale(${1 - 0.9*collapse})`;
+  ghosts.forEach((g, k) => {
+    // k=0 is the oldest (furthest back)
+    const d = oB(seg(t, 1.5 + (1-k)*0.12, 1.95 + (1-k)*0.12));
+    const off = (2 - k) * 34 * d, sc = 1 - (2-k) * 0.045 * d;
+    g.style.transform = `translateY(${-off}px) scale(${sc})`;
+    g.style.opacity = (d > 0 ? (0.55 + k*0.2) : 0).toFixed(3);
+    g.style.filter = `brightness(${0.75 + k*0.12})`;
+  });
+  $("c1front").style.transform = `translateY(${oC(seg(t,0,0.35))*0 + (1-oC(seg(t,0,0.35)))*24}px)`;
+  setO($("c1front"), oC(seg(t, 0, 0.3)));
+
+  // Scene 2: reveal
+  setO($("s2"), win(t, 4.7, 5.2, 7.6, 7.95));
+  const b2 = oC(seg(t, 4.7, 5.25)); $("b2").style.transform = `translateY(${(1-b2)*26}px)`;
+  const sb2 = oC(seg(t, 4.95, 5.45)); setO($("sub2"), sb2); $("sub2").style.transform = `translateY(${(1-sb2)*18}px)`;
+  const v = new THREE.Vector3();
+  lblEls.forEach((el, k) => {
+    const i = LBL[k];
+    const o = win(t, 5.3 + k*0.18, 5.65 + k*0.18, 7.55, 7.9);
+    setO(el, o);
+    v.set(pos[i*3], pos[i*3+1], pos[i*3+2]).project(camera);
+    const sx = (v.x*0.5+0.5)*W, sy = (-v.y*0.5+0.5)*H;
+    el.style.transform = `translate(${sx + 14}px, ${sy - 30 + (1-o)*8}px)`;
+  });
+
+  // Scene 3/4: app UI
+  const ui = win(t, 7.9, 8.3, 15.2, 15.55);
+  setO($("ui"), ui);
+  $("ui").style.transform = `translateY(${(1 - oC(seg(t, 7.9, 8.35)))*-12}px)`;
+  const q = typed(QUERY, t, 8.4, 9.2);
+  $("searchText").innerHTML = (q || `<span style="color:var(--muted)">Search memories…  (press /)</span>`) + (t > 8.25 && t < 9.9 ? `<span class="caret" style="opacity:${Math.floor(t*3)%2?0.2:1}"></span>` : "");
+  $("sw").style.borderColor = t > 8.3 && t < 12 ? "rgba(160,200,255,0.45)" : "";
+  const ro = win(t, 9.3, 9.5, 11.95, 12.2);
+  setO($("results"), ro);
+  resItems.forEach((el, r) => {
+    const o = oC(seg(t, 9.3 + r*0.07, 9.55 + r*0.07));
+    el.style.opacity = o; el.style.transform = `translateY(${(1-o)*8}px)`;
+    el.classList.toggle("active", r === (t > 11.0 ? 1 : 0));
+    el.classList.toggle("selected", r === 1 && t > 11.55);
+    el.querySelector("input").checked = r === 1 && t > 11.55;
+  });
+  $("selCount").textContent = t > 11.55 ? "1" : "0";
+  $("gp").disabled = !(t > 11.55);
+  const po = oC(seg(t, 12.35, 12.8));
+  setO($("panel"), po * (t > 12.3 ? 1 : 0));
+  $("panel").style.transform = `translateX(${(1-po)*40}px)`;
+  nbItems.forEach((el, k) => { const o = oC(seg(t, 12.8 + k*0.12, 13.1 + k*0.12)); el.style.opacity = o; });
+
+  setO($("c3"), win(t, 8.5, 8.9, 11.7, 12.0));
+  $("c3").style.transform = `translateY(${(1-oC(seg(t,8.5,8.9)))*20}px)`;
+  setO($("c4"), win(t, 12.5, 12.9, 15.1, 15.4));
+  $("c4").style.transform = `translateY(${(1-oC(seg(t,12.5,12.9)))*20}px)`;
+
+  // cursor: glide to RBC result then click
+  const cur = $("cursor"), ring = $("clickRing");
+  const cm = ioC(seg(t, 10.5, 11.35));
+  const cx = lerp(820, 300, cm), cy = lerp(520, 64 + 14 + 50 + 1*47 + 22, cm);
+  setO(cur, win(t, 10.35, 10.55, 12.0, 12.25));
+  const press = t > 11.45 && t < 11.62 ? 0.88 : 1;
+  cur.style.transform = `translate(${cx}px, ${cy}px) scale(${press})`;
+  const rk = seg(t, 11.5, 12.0);
+  setO(ring, rk > 0 && rk < 1 ? (1 - rk) : 0);
+  ring.style.transform = `translate(${cx - 20}px, ${cy - 20}px) scale(${0.4 + rk*1.2})`;
+
+  // dim for chat callback
+  const dimk = win(t, 15.35, 15.8, 19.45, 19.95);
+  $("dim").style.background = `rgba(4,6,12,${(0.72*dimk).toFixed(3)})`;
+  $("dim").style.backdropFilter = `blur(${(8*dimk).toFixed(2)}px)`;
+
+  // Scene 5: MCP callback
+  setO($("s5"), win(t, 15.5, 15.85, 19.1, 19.4));
+  const c5 = oC(seg(t, 15.5, 15.9)); $("c5").style.transform = `translateY(${(1-c5)*24}px) scale(${lerp(0.97,1,c5)})`;
+  $("u5").innerHTML = typed(ASK, t, 15.75, 16.5) + (t < 16.6 ? `<span class="caret" style="opacity:${Math.floor(t*3)%2?0.2:1}"></span>` : "");
+  const to = oC(seg(t, 16.65, 16.9)); setO($("tool5"), to); $("tool5").style.transform = `translateY(${(1-to)*10}px)`;
+  toolRows.forEach((el, k) => { const o = oC(seg(t, 16.9 + k*0.13, 17.15 + k*0.13)); el.style.opacity = o; el.style.transform = `translateX(${(1-o)*-10}px)`; });
+  setO($("a5"), seg(t, 17.45, 17.6));
+  $("a5t").innerHTML = typed(REPLY, t, 17.55, 18.55) + (t > 17.5 && t < 18.8 ? `<span class="caret" style="opacity:${Math.floor(t*3)%2?0.2:1}"></span>` : "");
+  const h5 = oC(seg(t, 15.9, 16.25)); setO($("h5"), h5); $("h5").style.transform = `translateY(${(1-h5)*18}px)`;
+
+  // Scene 6: outro
+  const b6 = oC(seg(t, 19.75, 20.35)); setO($("b6"), b6); $("b6").style.transform = `translateY(${(1-b6)*28}px) scale(${lerp(0.96,1,b6)})`;
+  const s6 = oC(seg(t, 20.15, 20.65)); setO($("sub6"), s6); $("sub6").style.transform = `translateY(${(1-s6)*18}px)`;
+  setO($("s6"), 1);
+
+  setO($("scrim"), Math.max(win(t, 4.6, 5.1, 7.6, 7.95), win(t, 8.4, 8.8, 15.1, 15.4)));
+  setO($("fade"), 0);
+};
+await document.fonts.ready;
+window.seek(0);
+window.DBG = () => ({cam: camera.position.toArray().map(x=>+x.toFixed(1)), view: camera.view, a: [...aAlpha].slice(0,4), b: [...aBoost].slice(0,4), p: [...pos].slice(0,6)});
+scene.traverse(o => o.frustumCulled = false);
+window.__T = {camera, renderer, scene, THREE};
+window.READY = true;
+</script>
+</body>
+</html>
